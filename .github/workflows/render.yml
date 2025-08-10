@@ -10,7 +10,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # (facoltativo ma utile) vedi che evento ha agganciato
       - name: Show event
         run: |
           echo "EVENT=$GITHUB_EVENT_NAME"
@@ -23,6 +22,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg rclone
+          ffmpeg -version
+          rclone version
 
       - name: Configure rclone with Service Account
         env:
@@ -30,23 +31,25 @@ jobs:
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
         run: |
           echo "$GDRIVE_SA_JSON" > "$GITHUB_WORKSPACE/sa.json"
-          cat > "$GITHUB_WORKSPACE/rclone.conf" <<'EOF'
+          # Niente apici su EOF: così ${GDRIVE_FOLDER_ID} si espande
+          cat > "$GITHUB_WORKSPACE/rclone.conf" <<EOF
 [gdrv]
 type = drive
 scope = drive
 service_account_file = $GITHUB_WORKSPACE/sa.json
-root_folder_id = ${GDRIVE_FOLDER_ID}
+root_folder_id = $GDRIVE_FOLDER_ID
 EOF
           echo "RCLONE_CONFIG=$GITHUB_WORKSPACE/rclone.conf" >> "$GITHUB_ENV"
+          echo "=== rclone.conf ==="
+          cat "$GITHUB_WORKSPACE/rclone.conf"
 
       - name: Pull assets from Drive
         run: |
           mkdir -p "$GITHUB_WORKSPACE/assets"
-          rclone copy gdrv: "$GITHUB_WORKSPACE/assets" --fast-list --transfers=8 --checkers=16 || true
-          echo "Scaricati:" && ls -la "$GITHUB_WORKSPACE/assets" || true
+          rclone copy gdrv: "$GITHUB_WORKSPACE/assets" --fast-list --transfers=8 --checkers=16
+          echo "Scaricati:" && ls -la "$GITHUB_WORKSPACE/assets"
 
       - name: Render video (FFmpeg)
-        # ATTENZIONE al path: deve esistere esattamente così
         run: |
           chmod +x .github/workflows/scripts/render.sh
           .github/workflows/scripts/render.sh "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
