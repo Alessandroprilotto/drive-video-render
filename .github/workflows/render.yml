@@ -1,9 +1,10 @@
 name: Render video from Drive
 
 on:
-  workflow_dispatch: {}
-  repository_dispatch:
-    types: [render_video]   # vincolo l'evento, così vediamo meglio l'aggancio
+  workflow_dispatch:    # abilita il pulsante manuale
+  repository_dispatch:  # abilita chiamata via API
+    types: [render_video]
+ # vincolo l'evento, così vediamo meglio l'aggancio
 
 permissions:
   contents: read
