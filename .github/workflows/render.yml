@@ -3,11 +3,20 @@ name: Render video from Drive
 on:
   workflow_dispatch: {}
   repository_dispatch:
+    types: [render_video]   # vincolo l'evento, così vediamo meglio l'aggancio
+
+permissions:
+  contents: read
 
 jobs:
   render:
     runs-on: ubuntu-latest
     steps:
+      - name: Debug event
+        run: |
+          echo "event=$GITHUB_EVENT_NAME"
+          cat "$GITHUB_EVENT_PATH"
+
       - name: Checkout
         uses: actions/checkout@v4
 
