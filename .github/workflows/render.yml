@@ -39,8 +39,8 @@ EOF
 
       - name: Render video (FFmpeg)
         run: |
-          chmod +x scripts/render.sh
-          scripts/render.sh "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
+          chmod +x .github/workflows/scripts/render.sh
+          .github/workflows/scripts/render.sh "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
 
       - name: Upload output to Drive
         run: |
