@@ -1,61 +1,15 @@
-name: Render video from Drive
+name: render_video
 
 on:
-  workflow_dispatch:    # abilita il pulsante manuale
-  repository_dispatch:  # abilita chiamata via API
+  workflow_dispatch:
+  repository_dispatch:
     types: [render_video]
- # vincolo l'evento, così vediamo meglio l'aggancio
-
-permissions:
-  contents: read
 
 jobs:
-  render:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: Debug event
+      - name: Show event
         run: |
-          echo "event=$GITHUB_EVENT_NAME"
-          cat "$GITHUB_EVENT_PATH"
-
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install ffmpeg and rclone
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg rclone
-
-      - name: Configure rclone with Service Account
-        env:
-          GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
-          GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
-        run: |
-          echo "$GDRIVE_SA_JSON" > "$GITHUB_WORKSPACE/sa.json"
-          cat > "$GITHUB_WORKSPACE/rclone.conf" <<EOF
-[gdrv]
-type = drive
-scope = drive
-service_account_file = $GITHUB_WORKSPACE/sa.json
-root_folder_id = $GDRIVE_FOLDER_ID
-EOF
-          echo "RCLONE_CONFIG=$GITHUB_WORKSPACE/rclone.conf" >> $GITHUB_ENV
-
-      - name: Pull assets from Drive
-        run: |
-          mkdir -p "$GITHUB_WORKSPACE/assets"
-          rclone copy gdrv: "$GITHUB_WORKSPACE/assets" --fast-list --transfers=8 --checkers=16
-          echo "Scaricati:" && ls -la "$GITHUB_WORKSPACE/assets"
-
-      - name: Render video (FFmpeg)
-        run: |
-          chmod +x .github/workflows/scripts/render.sh
-          .github/workflows/scripts/render.sh "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
-
-      - name: Upload output to Drive
-        run: |
-          rclone copy "$GITHUB_WORKSPACE/out/final.mp4" gdrv: --progress
-          if [ -f "$GITHUB_WORKSPACE/out/render.log" ]; then
-            rclone copy "$GITHUB_WORKSPACE/out/render.log" gdrv: --progress
-          fi
-          echo "✅ Completato. final.mp4 caricato nella cartella Drive."
+          echo "EVENT=$GITHUB_EVENT_NAME"
+          cat "$GITHUB_EVENT_PATH" || true
