@@ -3,7 +3,6 @@ name: Render video from Drive
 on:
   workflow_dispatch: {}
   repository_dispatch:
-    types: [render_video]
 
 jobs:
   render:
