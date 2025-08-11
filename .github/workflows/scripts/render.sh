@@ -55,12 +55,12 @@ for i in 1 2 3 4 5 6; do
   AUD="$(find_one "audio_${i}")" || { echo "⚠️  Manca audio_${i}"; continue; }
 
   ADUR="$(dur_secs "$AUD")"
-  VDIR=$(python - <<PY
+  VDIR=$(python3 - <<'PY'
 d=float("$ADUR")+0.7
 print(f"{d:.3f}")
 PY
 )
-  FRAMES=$(python - <<PY
+  FRAMES=$(python3 - <<'PY'
 import math
 print(int(round($VDIR*$FPS)))
 PY
