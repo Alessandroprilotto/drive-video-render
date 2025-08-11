@@ -38,8 +38,7 @@ jobs:
           printf "[gdrv]\n"                                  >> "$RCL"
           printf "type = drive\n"                            >> "$RCL"
           printf "scope = drive\n"                           >> "$RCL"
-          printf "service_account_file = %s/sa.json\n" \
-                 "$GITHUB_WORKSPACE"                         >> "$RCL"
+          printf "service_account_file = %s/sa.json\n" "$GITHUB_WORKSPACE" >> "$RCL"
           printf "root_folder_id = %s\n" "$GDRIVE_FOLDER_ID" >> "$RCL"
 
           echo "RCLONE_CONFIG=$RCL" >> "$GITHUB_ENV"
@@ -64,4 +63,3 @@ jobs:
             rclone copy "$GITHUB_WORKSPACE/out/render.log" gdrv: --progress
           fi
           echo "✅ Completato. final.mp4 caricato nella cartella Drive."
-
