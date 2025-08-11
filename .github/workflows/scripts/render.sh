@@ -1,4 +1,4 @@
-#!/usr/bin/env bash 
+#!/usr/bin/env bash
 # Usage: scripts/render.sh <INPUT_DIR> <OUTPUT_DIR>
 set -euo pipefail
 
@@ -18,14 +18,14 @@ find_one() {
   local base="$1"
   shopt -s nullglob nocaseglob
 
-  # 1) file SENZA estensione (es. 'foto_1', 'audio_1')
+  # 1) senza estensione
   local noext="$IN/${base}"
   if [[ -f "$noext" ]]; then
     echo "$noext"
     return 0
   fi
 
-  # 2) qualunque estensione (es. 'foto_1.jpg', 'audio_1.mp3', ...)
+  # 2) con qualsiasi estensione
   local cand=( "$IN/${base}".* )
   for f in "${cand[@]}"; do
     [[ -f "$f" ]] && { echo "$f"; return 0; }
@@ -42,33 +42,46 @@ WIDTH=1080
 HEIGHT=1920
 FPS=30
 
-# opzionale: background 'bg' (con o senza estensione)
 BG="$(find_one "bg" 2>/dev/null || true)"
 USE_BG=0
 [[ -n "${BG:-}" ]] && { echo "• Trovata bg: $BG"; USE_BG=1; }
 
-# ------- Effetti con movimento (zoom/pan) su OGNI clip -------
+# ------- Effetti -------
+# Tutte le virgole in min()/max() sono escappate con \,
 effect_for_index() {
   local i="$1" frames="$2"
   case "$i" in
-    1) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0012*on\,1.25):x=min((iw-ow)*on/$frames\,(iw-ow)/4):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
-    2) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0008*on\,1.18):x=(iw-ow)*(1-on/$frames):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
-    3) echo "[0:v]scale=1400:-2,zoompan=z=max(1.0\,1.22-0.0010*on):x=iw/2-(iw/zoom/2):y=min((ih-oh)*on/$frames,(ih-oh)/5):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
-    4) echo "[0:v]scale=1400:-2,zoompan=z=1.0:x=(iw-ow)*on/$frames:y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
-    5) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0010*on\,1.20):x=(iw-ow)*(1-on/$frames):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
-    6) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0015*on\,1.30):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
-    *) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0010*on\,1.20):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
+    1)
+      echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0012*on\,1.25):x=min((iw-ow)*on/$frames\,(iw-ow)/4):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+      ;;
+    2)
+      echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0008*on\,1.18):x=(iw-ow)*(1-on/$frames):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+      ;;
+    3)
+      echo "[0:v]scale=1400:-2,zoompan=z=max(1.0\,1.22-0.0010*on):x=iw/2-(iw/zoom/2):y=min((ih-oh)*on/$frames\,(ih-oh)/5):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+      ;;
+    4)
+      echo "[0:v]scale=1400:-2,zoompan=z=1.0:x=(iw-ow)*on/$frames:y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+      ;;
+    5)
+      echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0010*on\,1.20):x=(iw-ow)*(1-on/$frames):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+      ;;
+    6)
+      echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0015*on\,1.30):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+      ;;
+    *)
+      echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0010*on\,1.20):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+      ;;
   esac
 }
 
-# ------- Genera scene 1..6 -------
+# ------- Genera scene -------
 SCENES_BUILT=()
 for i in 1 2 3 4 5 6; do
   IMG="$(find_one "foto_${i}")"  || { echo "⚠️  Manca foto_${i}";  continue; }
   AUD="$(find_one "audio_${i}")" || { echo "⚠️  Manca audio_${i}"; continue; }
 
   ADUR="$(dur_secs "$AUD")"
-
   VDIR=$(python3 - <<PY
 d=float("${ADUR}")+0.7
 print(f"{d:.3f}")
@@ -107,7 +120,7 @@ done
 
 # ------- Concat finale -------
 if [[ ${#SCENES_BUILT[@]} -eq 0 ]]; then
-  echo "❌ Nessuna scena generata. Controlla nomi file (foto_1..6, audio_1..6)."
+  echo "❌ Nessuna scena generata."
   exit 1
 fi
 
