@@ -14,15 +14,23 @@ echo "Input:  $IN"
 echo "Output: $OUT"
 
 # ------- Helpers -------
-# ------- Helpers -------
 find_one() {
   local base="$1"
   shopt -s nullglob nocaseglob
-  # Accetta QUALSIASI estensione (foto_1.*, audio_1.*)
+
+  # 1) file SENZA estensione (es. 'foto_1', 'audio_1')
+  local noext="$IN/${base}"
+  if [[ -f "$noext" ]]; then
+    echo "$noext"
+    return 0
+  fi
+
+  # 2) qualunque estensione (es. 'foto_1.jpg', 'audio_1.mp3', ...)
   local cand=( "$IN/${base}".* )
   for f in "${cand[@]}"; do
     [[ -f "$f" ]] && { echo "$f"; return 0; }
   done
+
   return 1
 }
 
@@ -34,7 +42,8 @@ WIDTH=1080
 HEIGHT=1920
 FPS=30
 
-BG="$(find_one bg || true)"
+# opzionale: background 'bg' (con o senza estensione)
+BG="$(find_one "bg" 2>/dev/null || true)"
 USE_BG=0
 [[ -n "${BG:-}" ]] && { echo "• Trovata bg: $BG"; USE_BG=1; }
 
@@ -55,18 +64,21 @@ effect_for_index() {
 # ------- Genera scene 1..6 -------
 SCENES_BUILT=()
 for i in 1 2 3 4 5 6; do
-  IMG="$(find_one "foto_${i}")" || { echo "⚠️  Manca foto_${i}"; continue; }
+  IMG="$(find_one "foto_${i}")"  || { echo "⚠️  Manca foto_${i}";  continue; }
   AUD="$(find_one "audio_${i}")" || { echo "⚠️  Manca audio_${i}"; continue; }
 
   ADUR="$(dur_secs "$AUD")"
-  VDIR=$(python3 - <<'PY'
-d=float("$ADUR")+0.7
+
+  VDIR=$(python3 - <<PY
+d=float("${ADUR}")+0.7
 print(f"{d:.3f}")
 PY
 )
-  FRAMES=$(python3 - <<'PY'
+  FRAMES=$(python3 - <<PY
 import math
-print(int(round($VDIR*$FPS)))
+VDIR=float("${VDIR}")
+FPS=int("${FPS}")
+print(int(round(VDIR*FPS)))
 PY
 )
 
