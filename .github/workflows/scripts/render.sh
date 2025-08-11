@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/usr/bin/env bash 
 # Usage: scripts/render.sh <INPUT_DIR> <OUTPUT_DIR>
 set -euo pipefail
 
@@ -51,7 +51,7 @@ USE_BG=0
 effect_for_index() {
   local i="$1" frames="$2"
   case "$i" in
-    1) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0012*on\,1.25):x=min((iw-ow)*on/$frames,(iw-ow)/4):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
+    1) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0012*on\,1.25):x=min((iw-ow)*on/$frames\,(iw-ow)/4):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
     2) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0008*on\,1.18):x=(iw-ow)*(1-on/$frames):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
     3) echo "[0:v]scale=1400:-2,zoompan=z=max(1.0\,1.22-0.0010*on):x=iw/2-(iw/zoom/2):y=min((ih-oh)*on/$frames,(ih-oh)/5):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
     4) echo "[0:v]scale=1400:-2,zoompan=z=1.0:x=(iw-ow)*on/$frames:y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
