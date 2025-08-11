@@ -1,9 +1,7 @@
 name: render_video
 
 on:
-  # pulsante manuale nella UI
-  workflow_dispatch:
-  # trigger da API (n8n)
+  workflow_dispatch: {}
   repository_dispatch:
     types: [render_video]
 
@@ -32,23 +30,21 @@ jobs:
           GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
           GDRIVE_FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
         run: |
-          # salva la service account key
+          set -euo pipefail
           echo "$GDRIVE_SA_JSON" > "$GITHUB_WORKSPACE/sa.json"
 
-          # NIENTE apici su EOF, così le variabili si espandono
-          cat > "$GITHUB_WORKSPACE/rclone.conf" <<EOF
-[gdrv]
-type = drive
-scope = drive
-service_account_file = $GITHUB_WORKSPACE/sa.json
-root_folder_id = $GDRIVE_FOLDER_ID
-EOF
+          RCL="$GITHUB_WORKSPACE/rclone.conf"
+          : > "$RCL"
+          printf "[gdrv]\n"                                  >> "$RCL"
+          printf "type = drive\n"                            >> "$RCL"
+          printf "scope = drive\n"                           >> "$RCL"
+          printf "service_account_file = %s/sa.json\n" \
+                 "$GITHUB_WORKSPACE"                         >> "$RCL"
+          printf "root_folder_id = %s\n" "$GDRIVE_FOLDER_ID" >> "$RCL"
 
-          # punta rclone al file appena generato
-          echo "RCLONE_CONFIG=$GITHUB_WORKSPACE/rclone.conf" >> "$GITHUB_ENV"
-
+          echo "RCLONE_CONFIG=$RCL" >> "$GITHUB_ENV"
           echo "=== rclone.conf ==="
-          cat "$GITHUB_WORKSPACE/rclone.conf"
+          cat "$RCL"
 
       - name: Pull assets from Drive
         run: |
@@ -68,3 +64,4 @@ EOF
             rclone copy "$GITHUB_WORKSPACE/out/render.log" gdrv: --progress
           fi
           echo "✅ Completato. final.mp4 caricato nella cartella Drive."
+
