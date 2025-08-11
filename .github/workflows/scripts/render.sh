@@ -14,11 +14,15 @@ echo "Input:  $IN"
 echo "Output: $OUT"
 
 # ------- Helpers -------
+# ------- Helpers -------
 find_one() {
   local base="$1"
   shopt -s nullglob nocaseglob
-  local cand=( "$IN/${base}".jpg "$IN/${base}".jpeg "$IN/${base}".png "$IN/${base}".webp "$IN/${base}".mp3 "$IN/${base}".wav "$IN/${base}".m4a "$IN/${base}".aac )
-  for f in "${cand[@]}"; do [[ -f "$f" ]] && { echo "$f"; return 0; }; done
+  # Accetta QUALSIASI estensione (foto_1.*, audio_1.*)
+  local cand=( "$IN/${base}".* )
+  for f in "${cand[@]}"; do
+    [[ -f "$f" ]] && { echo "$f"; return 0; }
+  done
   return 1
 }
 
