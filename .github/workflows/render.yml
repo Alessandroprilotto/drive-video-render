@@ -56,10 +56,16 @@ jobs:
           chmod +x .github/workflows/scripts/render.sh
           .github/workflows/scripts/render.sh "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
 
-      - name: Upload output to Drive
-        run: |
-          rclone copy "$GITHUB_WORKSPACE/out/final.mp4" gdrv: --progress
-          if [ -f "$GITHUB_WORKSPACE/out/render.log" ]; then
-            rclone copy "$GITHUB_WORKSPACE/out/render.log" gdrv: --progress
-          fi
-          echo "✅ Completato. final.mp4 caricato nella cartella Drive."
+      # (opzionale) lascia anche lo step di upload su Drive qui, se vuoi provare
+
+      - name: Upload GitHub artifact (fallback)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-video
+          path: |
+            ${{ github.workspace }}/out/final.mp4
+            ${{ github.workspace }}/out/render.log
+          if-no-files-found: warn
+          retention-days: 7
+          compression-level: 6
