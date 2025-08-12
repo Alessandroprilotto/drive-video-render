@@ -25,7 +25,7 @@ jobs:
           ffmpeg -version
           rclone version
 
-      # ⬇️ NUOVO: dipendenze per STT (sottotitoli automatici)
+      # Dipendenze per i sottotitoli automatici (faster-whisper)
       - name: Install deps for subtitles
         run: |
           pip install --upgrade pip
@@ -57,21 +57,31 @@ jobs:
           rclone copy gdrv: "$GITHUB_WORKSPACE/assets" --fast-list --transfers=8 --checkers=16
           echo "Scaricati:" && ls -la "$GITHUB_WORKSPACE/assets"
 
-      # ⬇️ NUOVO: assicura che i font siano presenti dove lo script li cerca
+      # Assicura che i font siano in assets/fonts dove lo script li cerca
       - name: Provide fonts to assets
         run: |
           mkdir -p "$GITHUB_WORKSPACE/assets/fonts"
+          # copia da scripts/assets/fonts se esiste
           if ls "$GITHUB_WORKSPACE/scripts/assets/fonts/"*.ttf >/dev/null 2>&1; then
-            cp "$GITHUB_WORKSPACE/scripts/assets/fonts/"*.ttf "$GITHUB_WORKSPACE/assets/fonts/"
-          else
-            echo "⚠️ Nessun .ttf trovato in scripts/assets/fonts/. Carica Montserrat-ExtraBold.ttf lì."
+            cp "$GITHUB_WORKSPACE/scripts/assets/fonts/"*.ttf "$GITHUB_WORKSPACE/assets/fonts/" || true
+          fi
+          # copia anche da repo root assets/fonts (come hai ora)
+          if ls "$GITHUB_WORKSPACE/assets/fonts/"*.ttf >/dev/null 2>&1; then
+            echo "Font già presenti in assets/fonts."
           fi
           echo "Contenuto assets/fonts:" && ls -la "$GITHUB_WORKSPACE/assets/fonts" || true
 
+      # (opzionale) visualizza albero file per debug
+      - name: Show workspace tree (debug)
+        run: |
+          echo "== ROOT ==" && ls -la
+          echo "== assets ==" && ls -la assets || true
+          echo "== assets/fonts ==" && ls -la assets/fonts || true
+
       - name: Render video (FFmpeg)
         run: |
-          chmod +x scripts/render.sh
-          scripts/render.sh "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
+          chmod +x ./render.sh
+          ./render.sh "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
 
       - name: Upload GitHub artifact (fallback)
         if: always()
