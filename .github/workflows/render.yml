@@ -25,7 +25,7 @@ jobs:
           ffmpeg -version
           rclone version
 
-      # Dipendenze per i sottotitoli automatici (faster-whisper)
+      # Dipendenze per i sottotitoli automatici
       - name: Install deps for subtitles
         run: |
           pip install --upgrade pip
@@ -57,31 +57,43 @@ jobs:
           rclone copy gdrv: "$GITHUB_WORKSPACE/assets" --fast-list --transfers=8 --checkers=16
           echo "Scaricati:" && ls -la "$GITHUB_WORKSPACE/assets"
 
-      # Assicura che i font siano in assets/fonts dove lo script li cerca
+      # Assicura che i font siano in assets/fonts
       - name: Provide fonts to assets
         run: |
           mkdir -p "$GITHUB_WORKSPACE/assets/fonts"
-          # copia da scripts/assets/fonts se esiste
           if ls "$GITHUB_WORKSPACE/scripts/assets/fonts/"*.ttf >/dev/null 2>&1; then
             cp "$GITHUB_WORKSPACE/scripts/assets/fonts/"*.ttf "$GITHUB_WORKSPACE/assets/fonts/" || true
           fi
-          # copia anche da repo root assets/fonts (come hai ora)
           if ls "$GITHUB_WORKSPACE/assets/fonts/"*.ttf >/dev/null 2>&1; then
             echo "Font già presenti in assets/fonts."
           fi
           echo "Contenuto assets/fonts:" && ls -la "$GITHUB_WORKSPACE/assets/fonts" || true
 
-      # (opzionale) visualizza albero file per debug
+      # Debug: mostra struttura cartelle
       - name: Show workspace tree (debug)
         run: |
           echo "== ROOT ==" && ls -la
-          echo "== assets ==" && ls -la assets || true
+          echo "== scripts ==" && ls -la scripts || true
+          echo "== .github/workflows/scripts ==" && ls -la .github/workflows/scripts || true
           echo "== assets/fonts ==" && ls -la assets/fonts || true
 
+      # Render video - trova automaticamente lo script
       - name: Render video (FFmpeg)
         run: |
-          chmod +x ./render.sh
-          ./render.sh "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
+          set -euo pipefail
+          if [ -f ./render.sh ]; then
+            R=./render.sh
+          elif [ -f scripts/render.sh ]; then
+            R=scripts/render.sh
+          elif [ -f .github/workflows/scripts/render.sh ]; then
+            R=.github/workflows/scripts/render.sh
+          else
+            echo "❌ render.sh non trovato in nessun percorso."
+            exit 1
+          fi
+          echo "✔ Eseguo: $R"
+          chmod +x "$R"
+          "$R" "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
 
       - name: Upload GitHub artifact (fallback)
         if: always()
