@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: scripts/render.sh <INPUT_DIR> <OUTPUT_DIR>
+# Usage: ./render.sh <INPUT_DIR> <OUTPUT_DIR>
 set -euo pipefail
 
 IN="${1:-$GITHUB_WORKSPACE/assets}"
@@ -18,19 +18,13 @@ find_one() {
   local base="$1"
   shopt -s nullglob nocaseglob
 
-  # 1) senza estensione
   local noext="$IN/${base}"
-  if [[ -f "$noext" ]]; then
-    echo "$noext"
-    return 0
-  fi
+  if [[ -f "$noext" ]]; then echo "$noext"; return 0; fi
 
-  # 2) con qualsiasi estensione
   local cand=( "$IN/${base}".* )
   for f in "${cand[@]}"; do
     [[ -f "$f" ]] && { echo "$f"; return 0; }
   done
-
   return 1
 }
 
@@ -42,26 +36,27 @@ WIDTH=1080
 HEIGHT=1920
 FPS=30
 
-# ------- Sottotitoli (NUOVO) -------
-SUBS=1                                 # 1=attiva sottotitoli se possibili
-AUTO_STT=1                             # 1=se manca words_i.json, generarlo dall'audio
-export FAST_WHISPER_MODEL="small"      # small/medium/large-v3 (più grande = più qualità ma più lento)
+# ------- Sottotitoli -------
+SUBS=1
+AUTO_STT=1
+export FAST_WHISPER_MODEL="${FAST_WHISPER_MODEL:-small}"  # small/medium/large-v3
 
-FONTS_DIR="$IN/fonts"                  # es: assets/fonts/
-STYLE_FONT="Montserrat ExtraBold"      # nome interno del font .ttf
-F_SIZE=80                              # dimensione
-OUTLINE=3                              # contorno nero
-SHADOW=0                               # niente ombra (pulito)
-MARGIN_V=120                           # distanza dal fondo
-BOX_ALPHA="64"                         # box dietro il testo (00 trasparente .. FF opaco)
+FONTS_DIR="$IN/fonts"                  # dove il workflow copia i .ttf
+STYLE_FONT="Montserrat ExtraBold"      # nome interno del font
+F_SIZE=80
+OUTLINE=3
+SHADOW=0
+MARGIN_V=120
+BOX_ALPHA="64"                         # 00=trasp .. FF=opaco
 
-# Crea .ass con UNA parola visibile alla volta (nel suo intervallo)
+# builder ASS: una parola visibile per volta
 make_ass_word_by_word() {
   local json="$1" ass_out="$2"
   python3 - <<PY
 import json, sys, pathlib
-W=${WIDTH}; H=${HEIGHT}
-FONT="${STYLE_FONT}"; SIZE=${F_SIZE}; OUTL=${OUTLINE}; SH=${SHADOW}; MARG=${MARGIN_V}; BOXA="${BOX_ALPHA}"
+W,H = ${WIDTH}, ${HEIGHT}
+FONT="${STYLE_FONT}"
+SIZE=${F_SIZE}; OUTL=${OUTLINE}; SH=${SHADOW}; MARG=${MARGIN_V}; BOXA="${BOX_ALPHA}"
 
 def ts(t):
     t=max(0.0,float(t)); h=int(t//3600); t-=h*3600
@@ -105,7 +100,7 @@ print(f"Wrote {sys.argv[2]}")
 PY
 }
 
-# Genera words_i.json dall'audio con faster-whisper (CPU)
+# genera words_i.json con faster-whisper
 gen_words_from_audio() {
   local audio="$1" out_json="$2"
   python3 - <<'PY'
@@ -113,16 +108,16 @@ import sys, json, os
 audio, out_json, model_size = sys.argv[1], sys.argv[2], os.getenv("FAST_WHISPER_MODEL","small")
 try:
     from faster_whisper import WhisperModel
-except Exception:
-    print("⚠️  faster-whisper non installato. Esegui: pip install faster-whisper")
+except Exception as e:
+    print("⚠️  faster-whisper non installato:", e)
     sys.exit(2)
 
 model = WhisperModel(model_size, device="cpu", compute_type="int8")
-segments, info = model.transcribe(audio, word_timestamps=True, vad_filter=True,
-                                  vad_parameters=dict(min_silence_duration_ms=200))
+segments, _ = model.transcribe(audio, word_timestamps=True, vad_filter=True,
+                               vad_parameters=dict(min_silence_duration_ms=200))
 words=[]
 for seg in segments:
-    if not seg.words: 
+    if not getattr(seg, "words", None): 
         continue
     for w in seg.words:
         if not w.word: 
@@ -136,41 +131,34 @@ print(f"🧠 Creato {out_json} con {len(words)} parole")
 PY
 }
 
+# bg opzionale
 BG="$(find_one "bg" 2>/dev/null || true)"
 USE_BG=0
 [[ -n "${BG:-}" ]] && { echo "• Trovata bg: $BG"; USE_BG=1; }
 
-# ------- Effetti (tuoi, invariati) -------
-# Tutte le virgole in min()/max() sono escappate con \,
+# ------- Effetti (i tuoi, invariati) -------
 effect_for_index() {
   local i="$1" frames="$2"
   case "$i" in
-    1)
-      echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0012*on\,1.25):x=min((iw-ow)*on/$frames\,(iw-ow)/4):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
-      ;;
-    2)
-      echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0008*on\,1.18):x=(iw-ow)*(1-on/$frames):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
-      ;;
-    3)
-      echo "[0:v]scale=1400:-2,zoompan=z=max(1.0\,1.22-0.0010*on):x=iw/2-(iw/zoom/2):y=min((ih-oh)*on/$frames\,(ih-oh)/5):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
-      ;;
-    4)
-      echo "[0:v]scale=1400:-2,zoompan=z=1.0:x=(iw-ow)*on/$frames:y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
-      ;;
-    5)
-      echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0010*on\,1.20):x=(iw-ow)*(1-on/$frames):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
-      ;;
-    6)
-      echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0015*on\,1.30):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
-      ;;
-    *)
-      echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0010*on\,1.20):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
-      ;;
+    1) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0012*on\,1.25):x=min((iw-ow)*on/$frames\,(iw-ow)/4):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
+    2) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0008*on\,1.18):x=(iw-ow)*(1-on/$frames):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
+    3) echo "[0:v]scale=1400:-2,zoompan=z=max(1.0\,1.22-0.0010*on):x=iw/2-(iw/zoom/2):y=min((ih-oh)*on/$frames\,(ih-oh)/5):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
+    4) echo "[0:v]scale=1400:-2,zoompan=z=1.0:x=(iw-ow)*on/$frames:y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
+    5) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0010*on\,1.20):x=(iw-ow)*(1-on/$frames):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
+    6) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0015*on\,1.30):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
+    *) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0010*on\,1.20):x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
   esac
 }
 
-# ------- Genera scene (tua logica, invariata + sottotitoli) -------
+# ------- Render scene -------
 SCENES_BUILT=()
+
+# option fontsdir (solo se esiste la cartella)
+fontsdir_opt=""
+if [[ -d "$FONTS_DIR" ]]; then
+  fontsdir_opt=":fontsdir='${FONTS_DIR}'"
+fi
+
 for i in 1 2 3 4 5 6; do
   IMG="$(find_one "foto_${i}")"  || { echo "⚠️  Manca foto_${i}";  continue; }
   AUD="$(find_one "audio_${i}")" || { echo "⚠️  Manca audio_${i}"; continue; }
@@ -191,10 +179,9 @@ PY
 
   FX="$(effect_for_index "$i" "$FRAMES")"
   OUTFILE="$OUT/scene_${i}.mp4"
-
   echo "🎬 Scene $i | IMG=$(basename "$IMG") | AUD=$(basename "$AUD") | ~${VDIR}s"
 
-  # mix opzionale con bg (tua logica)
+  # mix opzionale con bg
   if [[ $USE_BG -eq 1 ]]; then
     ffmpeg -y -i "$AUD" -i "$BG" \
       -filter_complex "[0:a]volume=1.0[a0];[1:a]volume=0.25[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[aout]" \
@@ -204,26 +191,29 @@ PY
     AUD_IN="$AUD"
   fi
 
-  # --- Sottotitoli parola-per-parola ---
+  # Sottotitoli
   CAP_JSON="$IN/words_${i}.json"
   CAP_ASS="$OUT/captions_${i}.ass"
   HAVE_CAP=0
 
-  # se manca il json e AUTO_STT=1, generarlo
   if [[ $SUBS -eq 1 && ! -f "$CAP_JSON" && $AUTO_STT -eq 1 ]]; then
     echo "🧠 Estraggo parole dall'audio per la scena $i..."
-    gen_words_from_audio "$AUD" "$CAP_JSON" || echo "⚠️ Impossibile generare words_${i}.json"
+    if gen_words_from_audio "$AUD" "$CAP_JSON"; then
+      :
+    else
+      echo "⚠️  Impossibile generare words_${i}.json"
+    fi
   fi
 
   if [[ $SUBS -eq 1 && -f "$CAP_JSON" ]]; then
-    echo "📝 Sottotitoli: uso $CAP_JSON"
+    echo "📝 Sottotitoli: uso $(basename "$CAP_JSON")"
     make_ass_word_by_word "$CAP_JSON" "$CAP_ASS" && HAVE_CAP=1
   fi
 
-  # Render scena con o senza sottotitoli
+  # Render scena con/ senza sottotitoli
   if [[ $HAVE_CAP -eq 1 ]]; then
     ffmpeg -y -loop 1 -i "$IMG" -i "$AUD_IN" -t "$VDIR" \
-      -filter_complex "$FX;[v]subtitles='${CAP_ASS}':fontsdir='${FONTS_DIR}'[vf]" \
+      -filter_complex "$FX;[v]subtitles='${CAP_ASS}'${fontsdir_opt}[vf]" \
       -map "[vf]" -map 1:a \
       -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS \
       -c:a aac -b:a 192k -shortest "$OUTFILE"
@@ -238,10 +228,9 @@ PY
   SCENES_BUILT+=("$OUTFILE")
 done
 
-# ------- Concat finale (tua logica) -------
+# ------- Concat finale -------
 if [[ ${#SCENES_BUILT[@]} -eq 0 ]]; then
-  echo "❌ Nessuna scena generata."
-  exit 1
+  echo "❌ Nessuna scena generata."; exit 1
 fi
 
 LIST="$OUT/_list.txt"
