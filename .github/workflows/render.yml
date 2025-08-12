@@ -25,6 +25,12 @@ jobs:
           ffmpeg -version
           rclone version
 
+      # ⬇️ NUOVO: dipendenze per STT (sottotitoli automatici)
+      - name: Install deps for subtitles
+        run: |
+          pip install --upgrade pip
+          pip install faster-whisper==1.0.3
+
       - name: Configure rclone with Service Account
         env:
           GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
@@ -51,12 +57,21 @@ jobs:
           rclone copy gdrv: "$GITHUB_WORKSPACE/assets" --fast-list --transfers=8 --checkers=16
           echo "Scaricati:" && ls -la "$GITHUB_WORKSPACE/assets"
 
+      # ⬇️ NUOVO: assicura che i font siano presenti dove lo script li cerca
+      - name: Provide fonts to assets
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/assets/fonts"
+          if ls "$GITHUB_WORKSPACE/scripts/assets/fonts/"*.ttf >/dev/null 2>&1; then
+            cp "$GITHUB_WORKSPACE/scripts/assets/fonts/"*.ttf "$GITHUB_WORKSPACE/assets/fonts/"
+          else
+            echo "⚠️ Nessun .ttf trovato in scripts/assets/fonts/. Carica Montserrat-ExtraBold.ttf lì."
+          fi
+          echo "Contenuto assets/fonts:" && ls -la "$GITHUB_WORKSPACE/assets/fonts" || true
+
       - name: Render video (FFmpeg)
         run: |
-          chmod +x .github/workflows/scripts/render.sh
-          .github/workflows/scripts/render.sh "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
-
-      # (opzionale) lascia anche lo step di upload su Drive qui, se vuoi provare
+          chmod +x scripts/render.sh
+          scripts/render.sh "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
 
       - name: Upload GitHub artifact (fallback)
         if: always()
