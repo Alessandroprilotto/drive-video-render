@@ -43,10 +43,10 @@ FONTS_DIR="$IN/fonts"
 STYLE_FONT="Montserrat ExtraBold"
 
 # ⬇️ modifiche richieste
-F_SIZE=140          # +50% circa
+F_SIZE=200          # +50% circa
 OUTLINE=6           # bordo nero spesso
 SHADOW=0
-MARGIN_V=260        # > 2x distanza dal fondo
+MARGIN_V=1000        # > 2x distanza dal fondo
 
 # builder ASS: parola per parola, MAIUSCOLO, senza box
 make_ass_word_by_word() {
