@@ -64,7 +64,7 @@ jobs:
           rclone copy gdrv: "$GITHUB_WORKSPACE/assets" --fast-list --transfers=8 --checkers=16
           echo "Scaricati:" && ls -la "$GITHUB_WORKSPACE/assets"
 
-      # copia i font dalla repo alla cartella assets/fonts usata dallo script
+      # copia i font nella cartella usata dallo script
       - name: Provide fonts to assets
         run: |
           mkdir -p "$GITHUB_WORKSPACE/assets/fonts"
@@ -108,3 +108,4 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
           compression-level: 6
+
