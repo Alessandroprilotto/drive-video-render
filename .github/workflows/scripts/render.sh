@@ -257,16 +257,15 @@ if [[ -n "${MUSIC:-}" ]]; then
 
   ffmpeg -y -stream_loop -1 -i "$MUSIC" -t "$TDUR" -c:a aac -b:a 192k "$OUT/music_loop.m4a"
 
-  # Volumi e parametri ducking – tarati per TikTok:
-  # voce sempre in primo piano, musica udibile ma non invasiva.
-  NARR_VOL=${NARR_VOL:-1.00}        # 1.00 = nessun boost voce
-  MUSIC_VOL=${MUSIC_VOL:-0.30}      # base musica quando NON c'è voce (~ -10.5 dB)
+  # Parametri ducking
+  NARR_VOL=${NARR_VOL:-1.00}
+  MUSIC_VOL=${MUSIC_VOL:-0.30}
   DUCK_THRESHOLD=${DUCK_THRESHOLD:-0.08}
   DUCK_RATIO=${DUCK_RATIO:-6}
   DUCK_ATTACK=${DUCK_ATTACK:-5}
   DUCK_RELEASE=${DUCK_RELEASE:-250}
-  DUCK_MAKEUP=${DUCK_MAKEUP:-0}     # niente gain dopo la compressione per non rialzare la musica
-  ALIM_LIMIT=${ALIM_LIMIT:-0.95}    # << FIX: non 0.0. Range valido [0.0625–1]
+  DUCK_MAKEUP=${DUCK_MAKEUP:-1}     # << FIX: range 1–64 (1 = unit)
+  ALIM_LIMIT=${ALIM_LIMIT:-0.95}    # range 0.0625–1
 
   ffmpeg -y \
     -i "$OUT/final.mp4" \
