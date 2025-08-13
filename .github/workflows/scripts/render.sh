@@ -41,10 +41,10 @@ export FAST_WHISPER_MODEL="${FAST_WHISPER_MODEL:-small}"  # small/medium/large-v
 
 FONTS_DIR="$IN/fonts"                 # dove il workflow copia i .ttf
 STYLE_FONT="Montserrat ExtraBold"     # nome interno del font
-F_SIZE=92                             # un filo più grande
+F_SIZE=160                             # un filo più grande
 OUTLINE=6                             # bordo nero spesso
 SHADOW=0
-MARGIN_V=220                          # distanza dal fondo
+MARGIN_V=500                          # distanza dal fondo
 
 # builder ASS: UNA parola per volta, MAIUSCOLO, senza box
 make_ass_word_by_word() {
