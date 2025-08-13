@@ -25,7 +25,6 @@ jobs:
           ffmpeg -version
           rclone version
 
-      # Install Python + pip3
       - name: Install Python 3
         run: |
           sudo apt-get update
@@ -33,7 +32,7 @@ jobs:
           python3 --version
           pip3 --version
 
-      # Dipendenze per i sottotitoli automatici
+      # deps per STT
       - name: Install deps for subtitles
         run: |
           pip3 install --upgrade pip
@@ -48,7 +47,6 @@ jobs:
         run: |
           set -euo pipefail
           echo "$GDRIVE_SA_JSON" > "$GITHUB_WORKSPACE/sa.json"
-
           RCL="$GITHUB_WORKSPACE/rclone.conf"
           : > "$RCL"
           printf "[gdrv]\n"                                  >> "$RCL"
@@ -56,7 +54,6 @@ jobs:
           printf "scope = drive\n"                           >> "$RCL"
           printf "service_account_file = %s/sa.json\n" "$GITHUB_WORKSPACE" >> "$RCL"
           printf "root_folder_id = %s\n" "$GDRIVE_FOLDER_ID" >> "$RCL"
-
           echo "RCLONE_CONFIG=$RCL" >> "$GITHUB_ENV"
           echo "=== rclone.conf ==="
           cat "$RCL"
@@ -67,27 +64,22 @@ jobs:
           rclone copy gdrv: "$GITHUB_WORKSPACE/assets" --fast-list --transfers=8 --checkers=16
           echo "Scaricati:" && ls -la "$GITHUB_WORKSPACE/assets"
 
-      # Assicura che i font siano in assets/fonts
+      # copia i font dalla repo alla cartella assets/fonts usata dallo script
       - name: Provide fonts to assets
         run: |
           mkdir -p "$GITHUB_WORKSPACE/assets/fonts"
-          if ls "$GITHUB_WORKSPACE/scripts/assets/fonts/"*.ttf >/dev/null 2>&1; then
-            cp "$GITHUB_WORKSPACE/scripts/assets/fonts/"*.ttf "$GITHUB_WORKSPACE/assets/fonts/" || true
-          fi
-          if ls "$GITHUB_WORKSPACE/assets/fonts/"*.ttf >/dev/null 2>&1; then
-            echo "Font già presenti in assets/fonts."
+          if ls "$GITHUB_WORKSPACE/.github/workflows/scripts/assets/fonts/"*.ttf >/dev/null 2>&1; then
+            cp "$GITHUB_WORKSPACE/.github/workflows/scripts/assets/fonts/"*.ttf "$GITHUB_WORKSPACE/assets/fonts/" || true
           fi
           echo "Contenuto assets/fonts:" && ls -la "$GITHUB_WORKSPACE/assets/fonts" || true
 
-      # Debug: mostra struttura cartelle
       - name: Show workspace tree (debug)
         run: |
           echo "== ROOT ==" && ls -la
-          echo "== scripts ==" && ls -la scripts || true
           echo "== .github/workflows/scripts ==" && ls -la .github/workflows/scripts || true
+          echo "== assets ==" && ls -la assets || true
           echo "== assets/fonts ==" && ls -la assets/fonts || true
 
-      # Render video - trova automaticamente lo script
       - name: Render video (FFmpeg)
         run: |
           set -euo pipefail
