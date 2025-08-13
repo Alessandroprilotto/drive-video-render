@@ -26,6 +26,24 @@ find_one() {
   return 1
 }
 
+# Cerca una musica globale (music/song/soundtrack/bg_music/ciao*)
+find_music() {
+  shopt -s nullglob nocaseglob
+  local cand=(
+    "$IN/music".*
+    "$IN/song".*
+    "$IN/bgmusic".*
+    "$IN/bg_music".*
+    "$IN/soundtrack".*
+    "$IN/"*ciao*".mp3"
+    "$IN/"*music*".mp3"
+  )
+  for f in "${cand[@]}"; do
+    [[ -f "$f" ]] && { echo "$f"; return 0; }
+  done
+  return 1
+}
+
 dur_secs() {
   ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$1" | awk '{printf "%.3f\n", $1+0}'
 }
@@ -42,11 +60,11 @@ export FAST_WHISPER_MODEL="${FAST_WHISPER_MODEL:-small}"
 FONTS_DIR="$IN/fonts"
 STYLE_FONT="Montserrat ExtraBold"
 
-# ⬇️ modifiche richieste
-F_SIZE=200          # +50% circa
-OUTLINE=6           # bordo nero spesso
+# dimensioni/posizione richieste
+F_SIZE=200
+OUTLINE=6
 SHADOW=0
-MARGIN_V=500        # > 2x distanza dal fondo
+MARGIN_V=500
 
 # builder ASS: parola per parola, MAIUSCOLO, senza box
 make_ass_word_by_word() {
@@ -65,10 +83,9 @@ def ts(t):
 PRIMARY   = "&H00FFFFFF"   # bianco
 SECONDARY = "&H0000FFFF"
 OUTLINEC  = "&H00000000"   # nero
-BACK      = "&H00000000"   # irrilevante con BorderStyle=1
+BACK      = "&H00000000"
 
-json_path, out_path = "${json}", "${ass_out}"
-with open(json_path,"r",encoding="utf-8") as f:
+with open("${json}","r",encoding="utf-8") as f:
     raw=json.load(f)
 
 words=[]
@@ -91,7 +108,6 @@ f"PlayResX: {W}",f"PlayResY: {H}","",
 "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
 "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
 "Alignment, MarginL, MarginR, MarginV, Encoding",
-# BorderStyle=1 = contorno (no box)
 f"Style: TikTok,{FONT},{SIZE},{PRIMARY},{SECONDARY},{OUTLINEC},{BACK},-1,0,0,0,100,100,0,0,1,{OUTL},{SH},2,60,60,{MARG},1",
 "",
 "[Events]","Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
@@ -99,8 +115,8 @@ f"Style: TikTok,{FONT},{SIZE},{PRIMARY},{SECONDARY},{OUTLINEC},{BACK},-1,0,0,0,1
 for st,en,txt in words:
     ass.append(f"Dialogue: 0,{ts(st)},{ts(en)},TikTok,,0,0,0,,{txt}")
 
-pathlib.Path(out_path).write_text("\n".join(ass), encoding="utf-8")
-print(f"Wrote {out_path}")
+pathlib.Path("${ass_out}").write_text("\n".join(ass), encoding="utf-8")
+print(f"Wrote ${ass_out}")
 PY
 }
 
@@ -137,7 +153,7 @@ print(f"🧠 Creato {out_json} con {len(words)} parole")
 PY
 }
 
-# bg opzionale
+# bg opzionale (MIX per-scena, sconsigliato se usi musica globale)
 BG="$(find_one "bg" 2>/dev/null || true)"
 USE_BG=0
 [[ -n "${BG:-}" ]] && { echo "• Trovata bg: $BG"; USE_BG=1; }
@@ -186,6 +202,7 @@ PY
   OUTFILE="$OUT/scene_${i}.mp4"
   echo "🎬 Scene $i | IMG=$(basename "$IMG") | AUD=$(basename "$AUD") | ~${VDIR}s"
 
+  # mix opzionale con bg (sconsigliato se userai MUSICA GLOBALE)
   if [[ $USE_BG -eq 1 ]]; then
     ffmpeg -y -i "$AUD" -i "$BG" \
       -filter_complex "[0:a]volume=1.0[a0];[1:a]volume=0.25[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[aout]" \
@@ -212,7 +229,7 @@ PY
     make_ass_word_by_word "$CAP_JSON" "$CAP_ASS" && HAVE_CAP=1
   fi
 
-  # Render con o senza sottotitoli
+  # Render con/ senza sottotitoli
   if [[ $HAVE_CAP -eq 1 ]]; then
     ffmpeg -y -loop 1 -i "$IMG" -i "$AUD_IN" -t "$VDIR" \
       -filter_complex "$FX;[v]subtitles='${CAP_ASS}'${fontsdir_opt}[vf]" \
@@ -244,5 +261,26 @@ done
 ffmpeg -y -f concat -safe 0 -i "$LIST" \
   -c:v libx264 -pix_fmt yuv420p -r $FPS \
   -c:a aac -b:a 192k "$OUT/final.mp4"
+
+# ------- Musica globale (loop + mix su tutto il video) -------
+MUSIC="$(find_music || true)"
+if [[ -n "${MUSIC:-}" ]]; then
+  echo "🎵 Musica globale trovata: $(basename "$MUSIC")"
+  TDUR="$(dur_secs "$OUT/final.mp4")"
+  echo "Durata video: ${TDUR}s"
+
+  # loop musica fino alla durata del video
+  ffmpeg -y -stream_loop -1 -i "$MUSIC" -t "$TDUR" -c:a aac -b:a 192k "$OUT/music_loop.m4a"
+
+  # mix con ducking: voce 1.0, musica 0.12
+  ffmpeg -y -i "$OUT/final.mp4" -i "$OUT/music_loop.m4a" \
+    -filter_complex "[0:a]volume=1.0[a0];[1:a]volume=0.12[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2,volume=1.0[am]" \
+    -map 0:v -map "[am]" -c:v copy -c:a aac -b:a 192k -shortest "$OUT/final_bgm.mp4"
+
+  mv "$OUT/final_bgm.mp4" "$OUT/final.mp4"
+  echo "🎧 Mix completo con musica globale."
+else
+  echo "ℹ️ Nessuna musica globale trovata in assets (music.*, song.*, bgmusic.*, soundtrack.*, *ciao*.mp3)."
+fi
 
 echo "✅ Fatto. Output: $OUT/final.mp4"
