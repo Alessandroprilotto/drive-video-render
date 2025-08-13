@@ -26,7 +26,7 @@ find_one() {
   return 1
 }
 
-# Cerca una musica globale (music/song/soundtrack/bg_music/ciao*)
+# Cerca musica globale
 find_music() {
   shopt -s nullglob nocaseglob
   local cand=(
@@ -52,7 +52,7 @@ WIDTH=1080
 HEIGHT=1920
 FPS=30
 
-# ------- Sottotitoli (stile TikTok) -------
+# ------- Sottotitoli -------
 SUBS=1
 AUTO_STT=1
 export FAST_WHISPER_MODEL="${FAST_WHISPER_MODEL:-small}"
@@ -249,49 +249,41 @@ ffmpeg -y -f concat -safe 0 -i "$LIST" \
   -c:v libx264 -pix_fmt yuv420p -r $FPS \
   -c:a aac -b:a 192k "$OUT/final.mp4"
 
-# ------- Musica globale (loop + ducking stereo) -------
+# ------- Musica globale (loop + ducking stereo in UNICO flusso) -------
 MUSIC="$(find_music || true)"
 if [[ -n "${MUSIC:-}" ]]; then
   echo "🎵 Musica globale trovata: $(basename "$MUSIC")"
   TDUR="$(dur_secs "$OUT/final.mp4")"
 
-  # Loop musica alla durata del video
+  # loop musica alla durata del video
   ffmpeg -y -stream_loop -1 -i "$MUSIC" -t "$TDUR" -c:a aac -b:a 192k "$OUT/music_loop.m4a"
 
-  # Volumi (override da env se vuoi)
-  NARR_VOL=${NARR_VOL:-1.00}   # voce
-  MUSIC_VOL=${MUSIC_VOL:-0.30} # musica (non sovrasta la voce)
+  NARR_VOL=${NARR_VOL:-1.00}
+  MUSIC_VOL=${MUSIC_VOL:-0.30}
 
-  # Se il video non ha una traccia audio (voce), fai fallback a "solo musica"
-  if ! ffprobe -v error -select_streams a:0 -show_entries stream=index -of csv=p=0 "$OUT/final.mp4" >/dev/null; then
-    echo "⚠️  final.mp4 non ha traccia audio voce. Procedo con sola musica di sottofondo."
-    ffmpeg -y -i "$OUT/final.mp4" -i "$OUT/music_loop.m4a" \
-      -filter_complex "[1:a]volume=${MUSIC_VOL},alimiter=limit=0.95:level=disabled[AOUT]" \
-      -map 0:v -c:v copy -map "[AOUT]" -c:a aac -b:a 192k -ac 2 -shortest \
-      "$OUT/__final_with_bgm.mp4"
-    mv -f "$OUT/__final_with_bgm.mp4" "$OUT/final.mp4"
-  else
-    # Scrivo il filtergraph su file per evitare problemi di quoting
-    MIX_FCS="$OUT/mix_filter.fcs"
-    cat > "$MIX_FCS" <<EOF
-[0:a]aformat=channel_layouts=stereo,pan=stereo|c0=c0|c1=c0,volume=${NARR_VOL}[VOX];
-[1:a]aformat=channel_layouts=stereo,volume=${MUSIC_VOL}[MUS];
+  # Scrivo il filtro in un file per evitare problemi di quoting
+  FC="$OUT/fc_audio.txt"
+  cat > "$FC" <<'EOF'
+[0:a]aformat=channel_layouts=stereo,pan=stereo|c0=c0|c1=c0,volume=NARRVOL[VOX];
+[1:a]aformat=channel_layouts=stereo,volume=MUSVOL[MUS];
 [MUS][VOX]sidechaincompress=threshold=0.08:ratio=6:attack=5:release=250:makeup=1[MUSD];
 [MUSD][VOX]amix=inputs=2:duration=first:dropout_transition=2[MX];
 [MX]alimiter=limit=0.95:level=disabled[AOUT]
 EOF
+  # sostituisco i placeholder con i volumi scelti
+  sed -i "s/NARRVOL/${NARR_VOL}/g; s/MUSVOL/${MUSIC_VOL}/g" "$FC"
 
-    ffmpeg -y \
-      -i "$OUT/final.mp4" \
-      -i "$OUT/music_loop.m4a" \
-      -filter_complex_script "$MIX_FCS" \
-      -map 0:v -c:v copy \
-      -map "[AOUT]" -c:a aac -b:a 192k -ac 2 -shortest \
-      "$OUT/__final_with_bgm.mp4"
+  # Mix finale: 0 = final.mp4 (ha già V+A), 1 = musica loopata
+  ffmpeg -y \
+    -i "$OUT/final.mp4" \
+    -i "$OUT/music_loop.m4a" \
+    -filter_complex_script "$FC" \
+    -map 0:v:0 -c:v copy \
+    -map "[AOUT]" -c:a aac -b:a 192k -ac 2 -shortest \
+    "$OUT/__final_with_bgm.mp4"
 
-    mv -f "$OUT/__final_with_bgm.mp4" "$OUT/final.mp4"
-    echo "🎧 Mix completo con musica globale (stereo + ducking + limiter)."
-  fi
+  mv -f "$OUT/__final_with_bgm.mp4" "$OUT/final.mp4"
+  echo "🎧 Mix completo con musica (ducking) in singola traccia stereo."
 else
   echo "ℹ️ Nessuna musica globale trovata."
 fi
