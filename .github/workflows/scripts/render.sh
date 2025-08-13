@@ -37,36 +37,37 @@ FPS=30
 # ------- Sottotitoli (stile TikTok) -------
 SUBS=1
 AUTO_STT=1
-export FAST_WHISPER_MODEL="${FAST_WHISPER_MODEL:-small}"  # small/medium/large-v3
+export FAST_WHISPER_MODEL="${FAST_WHISPER_MODEL:-small}"
 
-FONTS_DIR="$IN/fonts"                 # dove il workflow copia i .ttf
-STYLE_FONT="Montserrat ExtraBold"     # nome interno del font
-F_SIZE=160                             # un filo più grande
-OUTLINE=6                             # bordo nero spesso
+FONTS_DIR="$IN/fonts"
+STYLE_FONT="Montserrat ExtraBold"
+
+# ⬇️ modifiche richieste
+F_SIZE=140          # +50% circa
+OUTLINE=6           # bordo nero spesso
 SHADOW=0
-MARGIN_V=500                          # distanza dal fondo
+MARGIN_V=260        # > 2x distanza dal fondo
 
-# builder ASS: UNA parola per volta, MAIUSCOLO, senza box
+# builder ASS: parola per parola, MAIUSCOLO, senza box
 make_ass_word_by_word() {
   local json="$1" ass_out="$2"
-  python3 - "$json" "$ass_out" <<'PY'
+  python3 - <<PY
 import json, sys, pathlib
-W,H = 1080, 1920
-FONT="Montserrat ExtraBold"
-SIZE=92; OUTL=6; SH=0; MARG=110
+W,H = ${WIDTH}, ${HEIGHT}
+FONT="${STYLE_FONT}"
+SIZE=${F_SIZE}; OUTL=${OUTLINE}; SH=${SHADOW}; MARG=${MARGIN_V}
 
 def ts(t):
     t=max(0.0,float(t)); h=int(t//3600); t-=h*3600
     m=int(t//60); t-=m*60; s=int(t); cs=int(round((t-s)*100))
     return f"{h:01d}:{m:02d}:{s:02d}.{cs:02d}"
 
-# ASS usa formato &HAABBGGRR
-PRIMARY   = "&H00FFFFFF"  # bianco pieno
-SECONDARY = "&H0000FFFF"  # ignorato ma teniamo un giallo
-OUTLINEC  = "&H00000000"  # nero per il bordo
-BACK      = "&H00000000"  # irrilevante con BorderStyle=1
+PRIMARY   = "&H00FFFFFF"   # bianco
+SECONDARY = "&H0000FFFF"
+OUTLINEC  = "&H00000000"   # nero
+BACK      = "&H00000000"   # irrilevante con BorderStyle=1
 
-json_path, out_path = sys.argv[1], sys.argv[2]
+json_path, out_path = "${json}", "${ass_out}"
 with open(json_path,"r",encoding="utf-8") as f:
     raw=json.load(f)
 
@@ -79,7 +80,6 @@ for w in raw:
     except:
         continue
     if en<=st: en=st+0.01
-    # pulizia + MAIUSCOLO
     txt=txt.replace("{","(").replace("}",")").upper()
     words.append((st,en,txt))
 words.sort(key=lambda x:x[0])
@@ -91,7 +91,7 @@ f"PlayResX: {W}",f"PlayResY: {H}","",
 "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
 "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
 "Alignment, MarginL, MarginR, MarginV, Encoding",
-# BorderStyle=1 => testo con contorno, NESSUN box
+# BorderStyle=1 = contorno (no box)
 f"Style: TikTok,{FONT},{SIZE},{PRIMARY},{SECONDARY},{OUTLINEC},{BACK},-1,0,0,0,100,100,0,0,1,{OUTL},{SH},2,60,60,{MARG},1",
 "",
 "[Events]","Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
@@ -107,9 +107,10 @@ PY
 # genera words_i.json con faster-whisper
 gen_words_from_audio() {
   local audio="$1" out_json="$2"
-  python3 - "$audio" "$out_json" <<'PY'
+  python3 - <<PY
 import sys, json, os
-audio, out_json = sys.argv[1], sys.argv[2]
+audio = "${audio}"
+out_json = "${out_json}"
 model_size = os.getenv("FAST_WHISPER_MODEL","small")
 try:
     from faster_whisper import WhisperModel
@@ -185,7 +186,6 @@ PY
   OUTFILE="$OUT/scene_${i}.mp4"
   echo "🎬 Scene $i | IMG=$(basename "$IMG") | AUD=$(basename "$AUD") | ~${VDIR}s"
 
-  # mix opzionale con bg
   if [[ $USE_BG -eq 1 ]]; then
     ffmpeg -y -i "$AUD" -i "$BG" \
       -filter_complex "[0:a]volume=1.0[a0];[1:a]volume=0.25[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[aout]" \
@@ -212,7 +212,7 @@ PY
     make_ass_word_by_word "$CAP_JSON" "$CAP_ASS" && HAVE_CAP=1
   fi
 
-  # Render scena con/ senza sottotitoli
+  # Render con o senza sottotitoli
   if [[ $HAVE_CAP -eq 1 ]]; then
     ffmpeg -y -loop 1 -i "$IMG" -i "$AUD_IN" -t "$VDIR" \
       -filter_complex "$FX;[v]subtitles='${CAP_ASS}'${fontsdir_opt}[vf]" \
