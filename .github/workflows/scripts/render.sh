@@ -272,15 +272,23 @@ if [[ -n "${MUSIC:-}" ]]; then
   # loop musica fino alla durata del video
   ffmpeg -y -stream_loop -1 -i "$MUSIC" -t "$TDUR" -c:a aac -b:a 192k "$OUT/music_loop.m4a"
 
-  # mix con ducking: voce 1.0, musica 0.12
-  ffmpeg -y -i "$OUT/final.mp4" -i "$OUT/music_loop.m4a" \
-    -filter_complex "[0:a]volume=1.0[a0];[1:a]volume=0.12[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2,volume=1.0[am]" \
-    -map 0:v -map "[am]" -c:v copy -c:a aac -b:a 192k -shortest "$OUT/final_bgm.mp4"
+  # === Mix finale con musica globale (FIX con amix) ===
+  NARR_VOL=${NARR_VOL:-1.00}   # voce
+  MUSIC_VOL=${MUSIC_VOL:-0.12} # musica di sottofondo
 
-  mv "$OUT/final_bgm.mp4" "$OUT/final.mp4"
+  ffmpeg -y \
+    -i "$OUT/final.mp4" \
+    -i "$OUT/music_loop.m4a" \
+    -filter_complex "[0:a]volume=${NARR_VOL}[v];[1:a]volume=${MUSIC_VOL}[m];[v][m]amix=inputs=2:duration=first:dropout_transition=2[aout]" \
+    -map 0:v -c:v copy \
+    -map "[aout]" -c:a aac -b:a 192k -shortest \
+    "$OUT/__final_with_bgm.mp4"
+
+  mv -f "$OUT/__final_with_bgm.mp4" "$OUT/final.mp4"
   echo "🎧 Mix completo con musica globale."
 else
   echo "ℹ️ Nessuna musica globale trovata in assets (music.*, song.*, bgmusic.*, soundtrack.*, *ciao*.mp3)."
 fi
 
 echo "✅ Fatto. Output: $OUT/final.mp4"
+
