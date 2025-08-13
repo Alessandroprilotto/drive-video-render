@@ -17,10 +17,8 @@ echo "Output: $OUT"
 find_one() {
   local base="$1"
   shopt -s nullglob nocaseglob
-
   local noext="$IN/${base}"
   if [[ -f "$noext" ]]; then echo "$noext"; return 0; fi
-
   local cand=( "$IN/${base}".* )
   for f in "${cand[@]}"; do
     [[ -f "$f" ]] && { echo "$f"; return 0; }
@@ -52,11 +50,11 @@ BOX_ALPHA="64"                         # 00=trasp .. FF=opaco
 # builder ASS: una parola visibile per volta
 make_ass_word_by_word() {
   local json="$1" ass_out="$2"
-  python3 - <<PY
+  python3 - "$json" "$ass_out" <<'PY'
 import json, sys, pathlib
-W,H = ${WIDTH}, ${HEIGHT}
-FONT="${STYLE_FONT}"
-SIZE=${F_SIZE}; OUTL=${OUTLINE}; SH=${SHADOW}; MARG=${MARGIN_V}; BOXA="${BOX_ALPHA}"
+W,H = 1080, 1920
+FONT="Montserrat ExtraBold"
+SIZE=80; OUTL=3; SH=0; MARG=120; BOXA="64"
 
 def ts(t):
     t=max(0.0,float(t)); h=int(t//3600); t-=h*3600
@@ -65,7 +63,8 @@ def ts(t):
 
 PRIMARY="&H00FFFFFF"; SECONDARY="&H0000FFFF"; OUTLINE="&H00111111"; BACK=f"&H{BOXA}000000"
 
-with open(sys.argv[1],"r",encoding="utf-8") as f:
+json_path, out_path = sys.argv[1], sys.argv[2]
+with open(json_path,"r",encoding="utf-8") as f:
     raw=json.load(f)
 
 words=[]
@@ -95,17 +94,18 @@ f"Style: TikTok,{FONT},{SIZE},{PRIMARY},{SECONDARY},{OUTLINE},{BACK},-1,0,0,0,10
 for st,en,txt in words:
     ass.append(f"Dialogue: 0,{ts(st)},{ts(en)},TikTok,,0,0,0,,{txt}")
 
-pathlib.Path(sys.argv[2]).write_text("\n".join(ass), encoding="utf-8")
-print(f"Wrote {sys.argv[2]}")
+pathlib.Path(out_path).write_text("\n".join(ass), encoding="utf-8")
+print(f"Wrote {out_path}")
 PY
 }
 
 # genera words_i.json con faster-whisper
 gen_words_from_audio() {
   local audio="$1" out_json="$2"
-  python3 - <<'PY'
+  python3 - "$audio" "$out_json" <<'PY'
 import sys, json, os
-audio, out_json, model_size = sys.argv[1], sys.argv[2], os.getenv("FAST_WHISPER_MODEL","small")
+audio, out_json = sys.argv[1], sys.argv[2]
+model_size = os.getenv("FAST_WHISPER_MODEL","small")
 try:
     from faster_whisper import WhisperModel
 except Exception as e:
@@ -153,7 +153,6 @@ effect_for_index() {
 # ------- Render scene -------
 SCENES_BUILT=()
 
-# option fontsdir (solo se esiste la cartella)
 fontsdir_opt=""
 if [[ -d "$FONTS_DIR" ]]; then
   fontsdir_opt=":fontsdir='${FONTS_DIR}'"
@@ -244,3 +243,4 @@ ffmpeg -y -f concat -safe 0 -i "$LIST" \
   -c:a aac -b:a 192k "$OUT/final.mp4"
 
 echo "✅ Fatto. Output: $OUT/final.mp4"
+
