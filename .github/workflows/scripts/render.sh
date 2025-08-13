@@ -249,7 +249,7 @@ ffmpeg -y -f concat -safe 0 -i "$LIST" \
   -c:v libx264 -pix_fmt yuv420p -r $FPS \
   -c:a aac -b:a 192k "$OUT/final.mp4"
 
-# ------- Musica globale (loop + ducking stereo) -------
+# ------- Musica globale (loop + ducking + MIX in un'unica traccia) -------
 MUSIC="$(find_music || true)"
 if [[ -n "${MUSIC:-}" ]]; then
   echo "🎵 Musica globale trovata: $(basename "$MUSIC")"
@@ -257,30 +257,32 @@ if [[ -n "${MUSIC:-}" ]]; then
 
   ffmpeg -y -stream_loop -1 -i "$MUSIC" -t "$TDUR" -c:a aac -b:a 192k "$OUT/music_loop.m4a"
 
-  # Parametri ducking
-  NARR_VOL=${NARR_VOL:-1.00}
-  MUSIC_VOL=${MUSIC_VOL:-0.30}
+  # Volumi e parametri (override via env se vuoi)
+  NARR_VOL=${NARR_VOL:-1.00}        # voce
+  MUSIC_VOL=${MUSIC_VOL:-0.30}      # musica di base
   DUCK_THRESHOLD=${DUCK_THRESHOLD:-0.08}
   DUCK_RATIO=${DUCK_RATIO:-6}
   DUCK_ATTACK=${DUCK_ATTACK:-5}
   DUCK_RELEASE=${DUCK_RELEASE:-250}
-  DUCK_MAKEUP=${DUCK_MAKEUP:-1}     # << FIX: range 1–64 (1 = unit)
-  ALIM_LIMIT=${ALIM_LIMIT:-0.95}    # range 0.0625–1
+  DUCK_MAKEUP=${DUCK_MAKEUP:-1}     # 1..64 (range valido)
+  ALIM_LIMIT=${ALIM_LIMIT:-0.95}    # 0.0625..1
 
+  # Mix finale: voce + musica duckata -> limiter -> 1 sola traccia audio nel video
   ffmpeg -y \
     -i "$OUT/final.mp4" \
     -i "$OUT/music_loop.m4a" \
     -filter_complex "\
       [0:a]aformat=channel_layouts=stereo,pan=stereo|c0=c0|c1=c0,volume=${NARR_VOL}[VOX]; \
       [1:a]aformat=channel_layouts=stereo,volume=${MUSIC_VOL}[MUS]; \
-      [MUS][VOX]sidechaincompress=threshold=${DUCK_THRESHOLD}:ratio=${DUCK_RATIO}:attack=${DUCK_ATTACK}:release=${DUCK_RELEASE}:makeup=${DUCK_MAKEUP}[DUCK]; \
-      [DUCK]alimiter=limit=${ALIM_LIMIT}:level=disabled[AOUT]" \
+      [MUS][VOX]sidechaincompress=threshold=${DUCK_THRESHOLD}:ratio=${DUCK_RATIO}:attack=${DUCK_ATTACK}:release=${DUCK_RELEASE}:makeup=${DUCK_MAKEUP}[MUSD]; \
+      [VOX][MUSD]amix=inputs=2:duration=first:dropout_transition=2[MX]; \
+      [MX]alimiter=limit=${ALIM_LIMIT}:level=disabled[AOUT]" \
     -map 0:v -c:v copy \
     -map "[AOUT]" -c:a aac -b:a 192k -ac 2 -shortest \
     "$OUT/__final_with_bgm.mp4"
 
   mv -f "$OUT/__final_with_bgm.mp4" "$OUT/final.mp4"
-  echo "🎧 Mix completo con musica globale (stereo + ducking)."
+  echo "🎧 Mix completo con musica (ducking) e voce in un'unica traccia."
 else
   echo "ℹ️ Nessuna musica globale trovata."
 fi
