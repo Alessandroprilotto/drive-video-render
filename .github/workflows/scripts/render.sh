@@ -34,34 +34,37 @@ WIDTH=1080
 HEIGHT=1920
 FPS=30
 
-# ------- Sottotitoli -------
+# ------- Sottotitoli (stile TikTok) -------
 SUBS=1
 AUTO_STT=1
 export FAST_WHISPER_MODEL="${FAST_WHISPER_MODEL:-small}"  # small/medium/large-v3
 
-FONTS_DIR="$IN/fonts"                  # dove il workflow copia i .ttf
-STYLE_FONT="Montserrat ExtraBold"      # nome interno del font
-F_SIZE=80
-OUTLINE=3
+FONTS_DIR="$IN/fonts"                 # dove il workflow copia i .ttf
+STYLE_FONT="Montserrat ExtraBold"     # nome interno del font
+F_SIZE=92                             # un filo più grande
+OUTLINE=6                             # bordo nero spesso
 SHADOW=0
-MARGIN_V=120
-BOX_ALPHA="64"                         # 00=trasp .. FF=opaco
+MARGIN_V=220                          # distanza dal fondo
 
-# builder ASS: una parola visibile per volta
+# builder ASS: UNA parola per volta, MAIUSCOLO, senza box
 make_ass_word_by_word() {
   local json="$1" ass_out="$2"
   python3 - "$json" "$ass_out" <<'PY'
 import json, sys, pathlib
 W,H = 1080, 1920
 FONT="Montserrat ExtraBold"
-SIZE=80; OUTL=3; SH=0; MARG=120; BOXA="64"
+SIZE=92; OUTL=6; SH=0; MARG=110
 
 def ts(t):
     t=max(0.0,float(t)); h=int(t//3600); t-=h*3600
     m=int(t//60); t-=m*60; s=int(t); cs=int(round((t-s)*100))
     return f"{h:01d}:{m:02d}:{s:02d}.{cs:02d}"
 
-PRIMARY="&H00FFFFFF"; SECONDARY="&H0000FFFF"; OUTLINE="&H00111111"; BACK=f"&H{BOXA}000000"
+# ASS usa formato &HAABBGGRR
+PRIMARY   = "&H00FFFFFF"  # bianco pieno
+SECONDARY = "&H0000FFFF"  # ignorato ma teniamo un giallo
+OUTLINEC  = "&H00000000"  # nero per il bordo
+BACK      = "&H00000000"  # irrilevante con BorderStyle=1
 
 json_path, out_path = sys.argv[1], sys.argv[2]
 with open(json_path,"r",encoding="utf-8") as f:
@@ -73,10 +76,11 @@ for w in raw:
     if not txt: continue
     try:
         st=float(w["start"]); en=float(w["end"])
-    except: 
+    except:
         continue
     if en<=st: en=st+0.01
-    txt=txt.replace("{","(").replace("}",")")
+    # pulizia + MAIUSCOLO
+    txt=txt.replace("{","(").replace("}",")").upper()
     words.append((st,en,txt))
 words.sort(key=lambda x:x[0])
 
@@ -87,7 +91,8 @@ f"PlayResX: {W}",f"PlayResY: {H}","",
 "Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, "
 "Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, "
 "Alignment, MarginL, MarginR, MarginV, Encoding",
-f"Style: TikTok,{FONT},{SIZE},{PRIMARY},{SECONDARY},{OUTLINE},{BACK},-1,0,0,0,100,100,0,0,3,{OUTL},{SH},2,60,60,{MARG},1",
+# BorderStyle=1 => testo con contorno, NESSUN box
+f"Style: TikTok,{FONT},{SIZE},{PRIMARY},{SECONDARY},{OUTLINEC},{BACK},-1,0,0,0,100,100,0,0,1,{OUTL},{SH},2,60,60,{MARG},1",
 "",
 "[Events]","Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
 ]
@@ -117,13 +122,13 @@ segments, _ = model.transcribe(audio, word_timestamps=True, vad_filter=True,
                                vad_parameters=dict(min_silence_duration_ms=200))
 words=[]
 for seg in segments:
-    if not getattr(seg, "words", None): 
+    if not getattr(seg, "words", None):
         continue
     for w in seg.words:
-        if not w.word: 
+        if not w.word:
             continue
         st = float(w.start if w.start is not None else seg.start)
-        en = float(w.end if w.end is not None else st+0.01)
+        en = float(w.end   if w.end   is not None else st+0.01)
         words.append({"text": w.word.strip(), "start": max(0.0, st), "end": max(en, st+0.01)})
 os.makedirs(os.path.dirname(out_json), exist_ok=True)
 with open(out_json,"w",encoding="utf-8") as f: json.dump(words,f,ensure_ascii=False)
@@ -197,9 +202,7 @@ PY
 
   if [[ $SUBS -eq 1 && ! -f "$CAP_JSON" && $AUTO_STT -eq 1 ]]; then
     echo "🧠 Estraggo parole dall'audio per la scena $i..."
-    if gen_words_from_audio "$AUD" "$CAP_JSON"; then
-      :
-    else
+    if gen_words_from_audio "$AUD" "$CAP_JSON"; then :; else
       echo "⚠️  Impossibile generare words_${i}.json"
     fi
   fi
@@ -243,4 +246,3 @@ ffmpeg -y -f concat -safe 0 -i "$LIST" \
   -c:a aac -b:a 192k "$OUT/final.mp4"
 
 echo "✅ Fatto. Output: $OUT/final.mp4"
-
