@@ -60,17 +60,15 @@ export FAST_WHISPER_MODEL="${FAST_WHISPER_MODEL:-small}"
 FONTS_DIR="$IN/fonts"
 STYLE_FONT="Montserrat ExtraBold"
 
-# dimensioni/posizione richieste
 F_SIZE=200
 OUTLINE=6
 SHADOW=0
 MARGIN_V=500
 
-# builder ASS: parola per parola, MAIUSCOLO, senza box
 make_ass_word_by_word() {
   local json="$1" ass_out="$2"
   python3 - <<PY
-import json, sys, pathlib
+import json, pathlib
 W,H = ${WIDTH}, ${HEIGHT}
 FONT="${STYLE_FONT}"
 SIZE=${F_SIZE}; OUTL=${OUTLINE}; SH=${SHADOW}; MARG=${MARGIN_V}
@@ -80,9 +78,9 @@ def ts(t):
     m=int(t//60); t-=m*60; s=int(t); cs=int(round((t-s)*100))
     return f"{h:01d}:{m:02d}:{s:02d}.{cs:02d}"
 
-PRIMARY   = "&H00FFFFFF"   # bianco
+PRIMARY   = "&H00FFFFFF"
 SECONDARY = "&H0000FFFF"
-OUTLINEC  = "&H00000000"   # nero
+OUTLINEC  = "&H00000000"
 BACK      = "&H00000000"
 
 with open("${json}","r",encoding="utf-8") as f:
@@ -120,7 +118,6 @@ print(f"Wrote ${ass_out}")
 PY
 }
 
-# genera words_i.json con faster-whisper
 gen_words_from_audio() {
   local audio="$1" out_json="$2"
   python3 - <<PY
@@ -153,12 +150,10 @@ print(f"🧠 Creato {out_json} con {len(words)} parole")
 PY
 }
 
-# bg opzionale (MIX per-scena, sconsigliato se usi musica globale)
 BG="$(find_one "bg" 2>/dev/null || true)"
 USE_BG=0
 [[ -n "${BG:-}" ]] && { echo "• Trovata bg: $BG"; USE_BG=1; }
 
-# ------- Effetti (i tuoi, invariati) -------
 effect_for_index() {
   local i="$1" frames="$2"
   case "$i" in
@@ -172,9 +167,7 @@ effect_for_index() {
   esac
 }
 
-# ------- Render scene -------
 SCENES_BUILT=()
-
 fontsdir_opt=""
 if [[ -d "$FONTS_DIR" ]]; then
   fontsdir_opt=":fontsdir='${FONTS_DIR}'"
@@ -202,7 +195,6 @@ PY
   OUTFILE="$OUT/scene_${i}.mp4"
   echo "🎬 Scene $i | IMG=$(basename "$IMG") | AUD=$(basename "$AUD") | ~${VDIR}s"
 
-  # mix opzionale con bg (sconsigliato se userai MUSICA GLOBALE)
   if [[ $USE_BG -eq 1 ]]; then
     ffmpeg -y -i "$AUD" -i "$BG" \
       -filter_complex "[0:a]volume=1.0[a0];[1:a]volume=0.25[a1];[a0][a1]amix=inputs=2:duration=first:dropout_transition=2[aout]" \
@@ -212,16 +204,13 @@ PY
     AUD_IN="$AUD"
   fi
 
-  # Sottotitoli
   CAP_JSON="$IN/words_${i}.json"
   CAP_ASS="$OUT/captions_${i}.ass"
   HAVE_CAP=0
 
   if [[ $SUBS -eq 1 && ! -f "$CAP_JSON" && $AUTO_STT -eq 1 ]]; then
     echo "🧠 Estraggo parole dall'audio per la scena $i..."
-    if gen_words_from_audio "$AUD" "$CAP_JSON"; then :; else
-      echo "⚠️  Impossibile generare words_${i}.json"
-    fi
+    gen_words_from_audio "$AUD" "$CAP_JSON" || true
   fi
 
   if [[ $SUBS -eq 1 && -f "$CAP_JSON" ]]; then
@@ -229,7 +218,6 @@ PY
     make_ass_word_by_word "$CAP_JSON" "$CAP_ASS" && HAVE_CAP=1
   fi
 
-  # Render con/ senza sottotitoli
   if [[ $HAVE_CAP -eq 1 ]]; then
     ffmpeg -y -loop 1 -i "$IMG" -i "$AUD_IN" -t "$VDIR" \
       -filter_complex "$FX;[v]subtitles='${CAP_ASS}'${fontsdir_opt}[vf]" \
@@ -247,7 +235,6 @@ PY
   SCENES_BUILT+=("$OUTFILE")
 done
 
-# ------- Concat finale -------
 if [[ ${#SCENES_BUILT[@]} -eq 0 ]]; then
   echo "❌ Nessuna scena generata."; exit 1
 fi
@@ -262,32 +249,33 @@ ffmpeg -y -f concat -safe 0 -i "$LIST" \
   -c:v libx264 -pix_fmt yuv420p -r $FPS \
   -c:a aac -b:a 192k "$OUT/final.mp4"
 
-# ------- Musica globale (loop + mix su tutto il video) -------
+# ------- Musica globale (loop + ducking stereo) -------
 MUSIC="$(find_music || true)"
 if [[ -n "${MUSIC:-}" ]]; then
   echo "🎵 Musica globale trovata: $(basename "$MUSIC")"
   TDUR="$(dur_secs "$OUT/final.mp4")"
-  echo "Durata video: ${TDUR}s"
 
-  # loop musica fino alla durata del video
   ffmpeg -y -stream_loop -1 -i "$MUSIC" -t "$TDUR" -c:a aac -b:a 192k "$OUT/music_loop.m4a"
 
-  # === Mix finale con musica globale (FIX con amix) ===
-  NARR_VOL=${NARR_VOL:-1.00}   # voce
-  MUSIC_VOL=${MUSIC_VOL:-0.12} # musica di sottofondo
+  NARR_VOL=${NARR_VOL:-1.00}
+  MUSIC_VOL=${MUSIC_VOL:-0.28}
 
   ffmpeg -y \
     -i "$OUT/final.mp4" \
     -i "$OUT/music_loop.m4a" \
-    -filter_complex "[0:a]volume=${NARR_VOL}[v];[1:a]volume=${MUSIC_VOL}[m];[v][m]amix=inputs=2:duration=first:dropout_transition=2[aout]" \
+    -filter_complex "\
+      [0:a]aformat=channel_layouts=stereo,pan=stereo|c0=c0|c1=c0,volume=${NARR_VOL}[VOX]; \
+      [1:a]aformat=channel_layouts=stereo,volume=${MUSIC_VOL}[MUS]; \
+      [MUS][VOX]sidechaincompress=threshold=0.05:ratio=8:attack=5:release=250:makeup=4[DUCK]; \
+      [DUCK]alimiter=limit=0.0:level=disabled[AOUT]" \
     -map 0:v -c:v copy \
-    -map "[aout]" -c:a aac -b:a 192k -shortest \
+    -map "[AOUT]" -c:a aac -b:a 192k -ac 2 -shortest \
     "$OUT/__final_with_bgm.mp4"
 
   mv -f "$OUT/__final_with_bgm.mp4" "$OUT/final.mp4"
-  echo "🎧 Mix completo con musica globale."
+  echo "🎧 Mix completo con musica globale (stereo + ducking)."
 else
-  echo "ℹ️ Nessuna musica globale trovata in assets (music.*, song.*, bgmusic.*, soundtrack.*, *ciao*.mp3)."
+  echo "ℹ️ Nessuna musica globale trovata."
 fi
 
 echo "✅ Fatto. Output: $OUT/final.mp4"
