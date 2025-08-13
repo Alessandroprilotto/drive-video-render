@@ -18,27 +18,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install ffmpeg and rclone
+      - name: Install ffmpeg, rclone, Python
         run: |
           sudo apt-get update
-          sudo apt-get install -y ffmpeg rclone
+          sudo apt-get install -y ffmpeg rclone python3 python3-pip
           ffmpeg -version
           rclone version
-
-      - name: Install Python 3
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y python3 python3-pip
           python3 --version
           pip3 --version
 
-      # deps per STT
-      - name: Install deps for subtitles
+      - name: Install Python deps for subtitles
         run: |
           pip3 install --upgrade pip
           pip3 install torch --index-url https://download.pytorch.org/whl/cpu
-          pip3 install numpy
-          pip3 install faster-whisper==1.0.3
+          pip3 install numpy faster-whisper==1.0.3
 
       - name: Configure rclone with Service Account
         env:
@@ -48,41 +41,46 @@ jobs:
           set -euo pipefail
           echo "$GDRIVE_SA_JSON" > "$GITHUB_WORKSPACE/sa.json"
           RCL="$GITHUB_WORKSPACE/rclone.conf"
-          : > "$RCL"
-          printf "[gdrv]\n"                                  >> "$RCL"
-          printf "type = drive\n"                            >> "$RCL"
-          printf "scope = drive\n"                           >> "$RCL"
-          printf "service_account_file = %s/sa.json\n" "$GITHUB_WORKSPACE" >> "$RCL"
-          printf "root_folder_id = %s\n" "$GDRIVE_FOLDER_ID" >> "$RCL"
+          {
+            echo "[gdrv]"
+            echo "type = drive"
+            echo "scope = drive"
+            echo "service_account_file = $GITHUB_WORKSPACE/sa.json"
+            echo "root_folder_id = $GDRIVE_FOLDER_ID"
+          } > "$RCL"
           echo "RCLONE_CONFIG=$RCL" >> "$GITHUB_ENV"
-          echo "=== rclone.conf ==="
-          cat "$RCL"
 
       - name: Pull assets from Drive
         run: |
           mkdir -p "$GITHUB_WORKSPACE/assets"
           rclone copy gdrv: "$GITHUB_WORKSPACE/assets" --fast-list --transfers=8 --checkers=16
-          echo "Scaricati:" && ls -la "$GITHUB_WORKSPACE/assets"
+          echo "Scaricati:"
+          find "$GITHUB_WORKSPACE/assets" -type f
 
-      # copia i font nella cartella usata dallo script
       - name: Provide fonts to assets
         run: |
           mkdir -p "$GITHUB_WORKSPACE/assets/fonts"
           if ls "$GITHUB_WORKSPACE/.github/workflows/scripts/assets/fonts/"*.ttf >/dev/null 2>&1; then
             cp "$GITHUB_WORKSPACE/.github/workflows/scripts/assets/fonts/"*.ttf "$GITHUB_WORKSPACE/assets/fonts/" || true
           fi
-          echo "Contenuto assets/fonts:" && ls -la "$GITHUB_WORKSPACE/assets/fonts" || true
+          echo "Contenuto assets/fonts:"
+          ls -la "$GITHUB_WORKSPACE/assets/fonts" || true
 
       - name: Show workspace tree (debug)
         run: |
-          echo "== ROOT ==" && ls -la
-          echo "== .github/workflows/scripts ==" && ls -la .github/workflows/scripts || true
-          echo "== assets ==" && ls -la assets || true
-          echo "== assets/fonts ==" && ls -la assets/fonts || true
+          echo "== ROOT =="
+          ls -la
+          echo "== .github/workflows/scripts =="
+          ls -la .github/workflows/scripts || true
+          echo "== assets =="
+          ls -la assets || true
+          echo "== assets/fonts =="
+          ls -la assets/fonts || true
 
       - name: Render video (FFmpeg)
         run: |
           set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/out"
           if [ -f ./render.sh ]; then
             R=./render.sh
           elif [ -f scripts/render.sh ]; then
@@ -105,7 +103,6 @@ jobs:
           path: |
             ${{ github.workspace }}/out/final.mp4
             ${{ github.workspace }}/out/render.log
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
           compression-level: 6
-
