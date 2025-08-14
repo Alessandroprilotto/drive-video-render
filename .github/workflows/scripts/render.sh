@@ -26,7 +26,6 @@ find_one() {
   return 1
 }
 
-# Cerca musica globale
 find_music() {
   shopt -s nullglob nocaseglob
   local cand=(
@@ -249,44 +248,39 @@ ffmpeg -y -f concat -safe 0 -i "$LIST" \
   -c:v libx264 -pix_fmt yuv420p -r $FPS \
   -c:a aac -b:a 192k "$OUT/final.mp4"
 
-# ------- Musica globale (loop + ducking stereo in UNICO flusso) -------
+# ------- Musica globale: ducking + limiter in traccia unica -------
 MUSIC="$(find_music || true)"
 if [[ -n "${MUSIC:-}" ]]; then
   echo "🎵 Musica globale trovata: $(basename "$MUSIC")"
   TDUR="$(dur_secs "$OUT/final.mp4")"
 
-  # loop musica alla durata del video
   ffmpeg -y -stream_loop -1 -i "$MUSIC" -t "$TDUR" -c:a aac -b:a 192k "$OUT/music_loop.m4a"
 
   NARR_VOL=${NARR_VOL:-1.00}
   MUSIC_VOL=${MUSIC_VOL:-0.30}
 
-  # Scrivo il filtro in un file per evitare problemi di quoting
   FC="$OUT/fc_audio.txt"
   cat > "$FC" <<'EOF'
-[0:a]aformat=channel_layouts=stereo,pan=stereo|c0=c0|c1=c0,volume=NARRVOL[VOX];
-[1:a]aformat=channel_layouts=stereo,volume=MUSVOL[MUS];
-[MUS][VOX]sidechaincompress=threshold=0.08:ratio=6:attack=5:release=250:makeup=1[MUSD];
-[MUSD][VOX]amix=inputs=2:duration=first:dropout_transition=2[MX];
-[MX]alimiter=limit=0.95:level=disabled[AOUT]
+[0:a]aformat=channel_layouts=stereo,pan=stereo|c0=c0|c1=c0,volume=NARRVOL[n];
+[1:a]aformat=channel_layouts=stereo,volume=MUSVOL[m];
+[m][n]sidechaincompress=threshold=0.08:ratio=6:attack=5:release=250:makeup=1[duck];
+[duck][n]amix=inputs=2:duration=first:dropout_transition=2[mix];
+[mix]alimiter=limit=0.95:level=disabled[outa]
 EOF
-  # sostituisco i placeholder con i volumi scelti
   sed -i "s/NARRVOL/${NARR_VOL}/g; s/MUSVOL/${MUSIC_VOL}/g" "$FC"
 
-  # Mix finale: 0 = final.mp4 (ha già V+A), 1 = musica loopata
   ffmpeg -y \
     -i "$OUT/final.mp4" \
     -i "$OUT/music_loop.m4a" \
     -filter_complex_script "$FC" \
     -map 0:v:0 -c:v copy \
-    -map "[AOUT]" -c:a aac -b:a 192k -ac 2 -shortest \
+    -map "[outa]" -c:a aac -b:a 192k -ac 2 -shortest \
     "$OUT/__final_with_bgm.mp4"
 
   mv -f "$OUT/__final_with_bgm.mp4" "$OUT/final.mp4"
-  echo "🎧 Mix completo con musica (ducking) in singola traccia stereo."
+  echo "🎧 Mix completo (voce + musica ducked) in una sola traccia stereo."
 else
   echo "ℹ️ Nessuna musica globale trovata."
 fi
 
 echo "✅ Fatto. Output: $OUT/final.mp4"
-
