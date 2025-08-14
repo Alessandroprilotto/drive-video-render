@@ -261,11 +261,11 @@ if [[ -n "${MUSIC:-}" ]]; then
 
   FC="$OUT/fc_audio.txt"
   cat > "$FC" <<'EOF'
-[0:a]aformat=channel_layouts=stereo,pan=stereo|c0=c0|c1=c0,volume=NARRVOL[n];
-[1:a]aformat=channel_layouts=stereo,volume=MUSVOL[m];
-[m][n]sidechaincompress=threshold=0.08:ratio=6:attack=5:release=250:makeup=1[duck];
-[duck][n]amix=inputs=2:duration=first:dropout_transition=2[mix];
-[mix]alimiter=limit=0.95:level=disabled[outa]
+[0:a]aformat=channel_layouts=stereo,pan=stereo|c0=c0|c1=c0,volume=NARRVOL[narr];
+[1:a]aformat=channel_layouts=stereo,volume=MUSVOL[mus];
+[mus][narr]sidechaincompress=threshold=0.08:ratio=6:attack=5:release=250:makeup=1[ducked];
+[ducked][narr]amix=inputs=2:duration=first:dropout_transition=2[mixed];
+[mixed]alimiter=limit=0.95:level=disabled[outmix]
 EOF
   sed -i "s/NARRVOL/${NARR_VOL}/g; s/MUSVOL/${MUSIC_VOL}/g" "$FC"
 
@@ -274,7 +274,7 @@ EOF
     -i "$OUT/music_loop.m4a" \
     -filter_complex_script "$FC" \
     -map 0:v:0 -c:v copy \
-    -map "[outa]" -c:a aac -b:a 192k -ac 2 -shortest \
+    -map "[outmix]" -c:a aac -b:a 192k -ac 2 -shortest \
     "$OUT/__final_with_bgm.mp4"
 
   mv -f "$OUT/__final_with_bgm.mp4" "$OUT/final.mp4"
