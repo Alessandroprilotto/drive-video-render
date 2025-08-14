@@ -249,7 +249,7 @@ ffmpeg -y -f concat -safe 0 -i "$LIST" \
   -c:v libx264 -pix_fmt yuv420p -r $FPS \
   -c:a aac -b:a 192k "$OUT/final.mp4"
 
-# ------- Musica globale: ducking + limiter in un'unica traccia -------
+# ------- Musica globale: ducking + limiter corretto -------
 MUSIC="$(find_music || true)"
 if [[ -n "${MUSIC:-}" ]]; then
   echo "🎵 Musica globale trovata: $(basename "$MUSIC")"
@@ -260,22 +260,16 @@ if [[ -n "${MUSIC:-}" ]]; then
   NARR_VOL=${NARR_VOL:-1.00}
   MUSIC_VOL=${MUSIC_VOL:-0.30}
 
-  FC="$OUT/fc_audio.txt"
-  cat > "$FC" <<'EOF'
-[0:a]aformat=channel_layouts=stereo,pan=stereo|c0=c0|c1=c0,volume=NARRVOL[SVOX];
-[1:a]aformat=channel_layouts=stereo,volume=MUSVOL[SMUS];
-[SMUS][SVOX]sidechaincompress=threshold=0.08:ratio=6:attack=5:release=250:makeup=1[SDUCK];
-[SDUCK][SVOX]amix=inputs=2:duration=first:dropout_transition=2[SMIX];
-[SMIX]alimiter=limit=0.95:level=disabled[SOUT]
-EOF
-  sed -i "s/NARRVOL/${NARR_VOL}/g; s/MUSVOL/${MUSIC_VOL}/g" "$FC"
-
   ffmpeg -y \
     -i "$OUT/final.mp4" \
     -i "$OUT/music_loop.m4a" \
-    -filter_complex_script "$FC" \
+    -filter_complex "[0:a]aformat=channel_layouts=stereo,volume=${NARR_VOL}[VOX]; \
+                     [1:a]aformat=channel_layouts=stereo,volume=${MUSIC_VOL}[MUS]; \
+                     [MUS][VOX]sidechaincompress=threshold=0.08:ratio=6:attack=5:release=250:makeup=1[DUCK]; \
+                     [DUCK][VOX]amix=inputs=2:duration=first:dropout_transition=2[MIX]; \
+                     [MIX]alimiter=limit=0.95:level=disabled[OUT]" \
     -map 0:v:0 -c:v copy \
-    -map "[SOUT]" -c:a aac -b:a 192k -ac 2 -shortest \
+    -map "[OUT]" -c:a aac -b:a 192k -ac 2 -shortest \
     "$OUT/__final_with_bgm.mp4"
 
   mv -f "$OUT/__final_with_bgm.mp4" "$OUT/final.mp4"
@@ -285,3 +279,4 @@ else
 fi
 
 echo "✅ Fatto. Output: $OUT/final.mp4"
+
