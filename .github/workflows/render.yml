@@ -77,7 +77,7 @@ jobs:
           echo "== assets/fonts =="
           ls -la assets/fonts || true
 
-      - name: Render video (FFmpeg)
+      - name: Render video (FFmpeg, senza musica)
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/out"
@@ -95,14 +95,34 @@ jobs:
           chmod +x "$R"
           "$R" "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
 
-      - name: Upload GitHub artifact (fallback)
-        if: always()
+      - name: Upload video senza musica
         uses: actions/upload-artifact@v4
         with:
-          name: final-video
-          path: |
-            ${{ github.workspace }}/out/final.mp4
-            ${{ github.workspace }}/out/render.log
-          if-no-files-found: error
+          name: video-senza-musica
+          path: ${{ github.workspace }}/out/final.mp4
+          retention-days: 7
+          compression-level: 6
+
+      - name: Aggiungi musica al video finale
+        run: |
+          if [ -f ./add_music.sh ]; then
+            M=./add_music.sh
+          elif [ -f scripts/add_music.sh ]; then
+            M=scripts/add_music.sh
+          elif [ -f .github/workflows/scripts/add_music.sh ]; then
+            M=.github/workflows/scripts/add_music.sh
+          else
+            echo "❌ add_music.sh non trovato."
+            exit 1
+          fi
+          echo "✔ Eseguo: $M"
+          chmod +x "$M"
+          "$M" "$GITHUB_WORKSPACE/out/final.mp4" "$GITHUB_WORKSPACE/assets/music.mp3" "$GITHUB_WORKSPACE/out/final_with_music.mp4"
+
+      - name: Upload video con musica
+        uses: actions/upload-artifact@v4
+        with:
+          name: video-con-musica
+          path: ${{ github.workspace }}/out/final_with_music.mp4
           retention-days: 7
           compression-level: 6
