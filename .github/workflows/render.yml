@@ -81,12 +81,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/out"
-          if [ -f ./render.sh ]; then
-            R=./render.sh
+          if [ -f .github/workflows/scripts/render.sh ]; then
+            R=.github/workflows/scripts/render.sh
           elif [ -f scripts/render.sh ]; then
             R=scripts/render.sh
-          elif [ -f .github/workflows/scripts/render.sh ]; then
-            R=.github/workflows/scripts/render.sh
+          elif [ -f ./render.sh ]; then
+            R=./render.sh
           else
             echo "❌ render.sh non trovato in nessun percorso."
             exit 1
@@ -105,19 +105,27 @@ jobs:
 
       - name: Aggiungi musica al video finale
         run: |
-          if [ -f ./add_music.sh ]; then
-            M=./add_music.sh
+          set -euo pipefail
+          MUSIC_FILE="$GITHUB_WORKSPACE/assets/music.mp3"
+          if [ ! -f "$MUSIC_FILE" ]; then
+            echo "❌ File musica non trovato in: $MUSIC_FILE"
+            exit 1
+          fi
+
+          if [ -f .github/workflows/scripts/add_music.sh ]; then
+            M=.github/workflows/scripts/add_music.sh
           elif [ -f scripts/add_music.sh ]; then
             M=scripts/add_music.sh
-          elif [ -f .github/workflows/scripts/add_music.sh ]; then
-            M=.github/workflows/scripts/add_music.sh
+          elif [ -f ./add_music.sh ]; then
+            M=./add_music.sh
           else
             echo "❌ add_music.sh non trovato."
             exit 1
           fi
+
           echo "✔ Eseguo: $M"
           chmod +x "$M"
-          "$M" "$GITHUB_WORKSPACE/out/final.mp4" "$GITHUB_WORKSPACE/assets/music.mp3" "$GITHUB_WORKSPACE/out/final_with_music.mp4"
+          "$M" "$GITHUB_WORKSPACE/out/final.mp4" "$MUSIC_FILE" "$GITHUB_WORKSPACE/out/final_with_music.mp4"
 
       - name: Upload video con musica
         uses: actions/upload-artifact@v4
