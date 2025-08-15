@@ -22,10 +22,19 @@ echo "🎵 Aggiungo musica di sottofondo a: $VIDEO_INPUT"
 echo "   Musica: $MUSIC_INPUT"
 echo "   Output: $VIDEO_OUTPUT"
 
+# Controllo durate
+VIDEO_DUR=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$VIDEO_INPUT")
+MUSIC_DUR=$(ffprobe -v error -show_entries format=duration -of default=nw=1:nk=1 "$MUSIC_INPUT")
+
+if (( $(echo "$MUSIC_DUR > $VIDEO_DUR" | bc -l) )); then
+    echo "⚠️  La musica è più lunga del video. Verrà tagliata alla durata del video."
+fi
+
 # Volume voce = 1.0, volume musica = 0.3
 ffmpeg -y -i "$VIDEO_INPUT" -i "$MUSIC_INPUT" \
   -filter_complex "[1:a]volume=0.3[a1];[0:a][a1]amix=inputs=2:duration=first:dropout_transition=3" \
-  -c:v copy -c:a aac -b:a 192k \
+  -c:v copy -c:a aac -b:a 192k -shortest \
   "$VIDEO_OUTPUT"
 
 echo "✅ Musica aggiunta con successo: $VIDEO_OUTPUT"
+
