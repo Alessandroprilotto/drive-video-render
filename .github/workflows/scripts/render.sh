@@ -6,7 +6,7 @@ set -euo pipefail
 WS="${GITHUB_WORKSPACE:-$PWD}"
 IN="${1:-$WS/assets}"
 
-# Usiamo la stessa cartella per l'output principale (salva su Drive)
+# Usiamo la stessa cartella per l'output principale
 OUT="$IN"
 mkdir -p "$OUT"
 
@@ -187,13 +187,16 @@ for f in "${SCENES_BUILT[@]}"; do
   echo "file '$f'" >> "$LIST"
 done
 
-# Final in stessa cartella degli input (Drive)
+# Final video
 ffmpeg -y -f concat -safe 0 -i "$LIST" -c:v libx264 -pix_fmt yuv420p -r $FPS \
   -c:a aac -b:a 192k "$OUT/final.mp4"
 
-echo "✅ Video pronto (Drive): $OUT/final.mp4"
+echo "✅ Video pronto: $OUT/final.mp4"
 
-# --- Compatibilità pipeline GitHub Actions (add_music.sh cerca out/final.mp4) ---
-mkdir -p "$WS/out"
-cp -f "$OUT/final.mp4" "$WS/out/final.mp4"
-echo "📤 Copia per pipeline: $WS/out/final.mp4"
+# --- Invio diretto al webhook n8n ---
+WEBHOOK_URL="https://digitale.app.n8n.cloud/webhook/ba7c7a08-7ba7-43cf-b4cb-7dc6b8a22ed2"
+echo "📤 Invio video a n8n..."
+curl -sS -X POST \
+  -F "file=@$OUT/final.mp4;type=video/mp4;filename=final.mp4" \
+  "$WEBHOOK_URL"
+echo "✅ Video inviato al webhook"
