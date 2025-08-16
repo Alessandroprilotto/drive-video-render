@@ -2,11 +2,11 @@
 # Usage: ./render.sh <INPUT_DIR>
 set -euo pipefail
 
-# Cartella input (Drive) da argomento o default a $GITHUB_WORKSPACE/assets
+# Cartella input da argomento o default a $GITHUB_WORKSPACE/assets
 WS="${GITHUB_WORKSPACE:-$PWD}"
 IN="${1:-$WS/assets}"
 
-# Usiamo la stessa cartella per l'output principale
+# Output nella stessa cartella degli input
 OUT="$IN"
 mkdir -p "$OUT"
 
@@ -14,7 +14,7 @@ LOG="$OUT/render.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo "== Start render =="
-echo "Input/Output (Drive): $IN"
+echo "Input/Output: $IN"
 
 # ------- Helpers -------
 find_one() {
@@ -194,9 +194,17 @@ ffmpeg -y -f concat -safe 0 -i "$LIST" -c:v libx264 -pix_fmt yuv420p -r $FPS \
 echo "✅ Video pronto: $OUT/final.mp4"
 
 # --- Invio diretto al webhook n8n ---
-WEBHOOK_URL="https://digitale.app.n8n.cloud/webhook/ba7c7a08-7ba7-43cf-b4cb-7dc6b8a22ed2"
+WEBHOOK_URL="${N8N_WEBHOOK_URL:-https://digitale.app.n8n.cloud/webhook/ba7c7a08-7ba7-43cf-b4cb-7dc6b8a22ed2}"
 echo "📤 Invio video a n8n..."
-curl -sS -X POST \
+if ! curl -sS --retry 3 --fail -X POST \
   -F "file=@$OUT/final.mp4;type=video/mp4;filename=final.mp4" \
-  "$WEBHOOK_URL"
-echo "✅ Video inviato al webhook"
+  "$WEBHOOK_URL?source=github&repo=${GITHUB_REPOSITORY:-local}&run_id=${GITHUB_RUN_ID:-0}"; then
+  echo "⚠️  Invio a n8n fallito (proseguirò comunque)."
+else
+  echo "✅ Video inviato al webhook"
+fi
+
+# --- Copia compatibilità per altri step del workflow (se servono) ---
+mkdir -p "$WS/out"
+cp -f "$OUT/final.mp4" "$WS/out/final.mp4"
+echo "📦 Copia compatibilità: $WS/out/final.mp4"
