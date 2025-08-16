@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# Usage: ./render.sh <INPUT_DIR> <OUTPUT_DIR>
+# Usage: ./render.sh <INPUT_DIR>
 set -euo pipefail
 
+# Cartella input (da argomento o default)
 IN="${1:-$GITHUB_WORKSPACE/assets}"
-OUT="${2:-$GITHUB_WORKSPACE/out}"
-mkdir -p "$OUT"
+
+# Usiamo la stessa cartella per l'output
+OUT="$IN"
 
 LOG="$OUT/render.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo "== Start render =="
-echo "Input:  $IN"
-echo "Output: $OUT"
+echo "Input/Output: $IN"
 
 # ------- Helpers -------
 find_one() {
@@ -51,20 +52,16 @@ import json, pathlib
 W,H = ${WIDTH}, ${HEIGHT}
 FONT="${STYLE_FONT}"
 SIZE=${F_SIZE}; OUTL=${OUTLINE}; SH=${SHADOW}; MARG=${MARGIN_V}
-
 def ts(t):
     t=max(0.0,float(t)); h=int(t//3600); t-=h*3600
     m=int(t//60); t-=m*60; s=int(t); cs=int(round((t-s)*100))
     return f"{h:01d}:{m:02d}:{s:02d}.{cs:02d}"
-
 PRIMARY   = "&H00FFFFFF"
 SECONDARY = "&H0000FFFF"
 OUTLINEC  = "&H00000000"
 BACK      = "&H00000000"
-
 with open("${json}","r",encoding="utf-8") as f:
     raw=json.load(f)
-
 words=[]
 for w in raw:
     txt=str(w.get("text","")).strip()
@@ -77,7 +74,6 @@ for w in raw:
     txt=txt.replace("{","(").replace("}",")").upper()
     words.append((st,en,txt))
 words.sort(key=lambda x:x[0])
-
 ass=[
 "[Script Info]","ScriptType: v4.00+",
 f"PlayResX: {W}",f"PlayResY: {H}","",
@@ -91,7 +87,6 @@ f"Style: TikTok,{FONT},{SIZE},{PRIMARY},{SECONDARY},{OUTLINEC},{BACK},-1,0,0,0,1
 ]
 for st,en,txt in words:
     ass.append(f"Dialogue: 0,{ts(st)},{ts(en)},TikTok,,0,0,0,,{txt}")
-
 pathlib.Path("${ass_out}").write_text("\n".join(ass), encoding="utf-8")
 PY
 }
@@ -103,12 +98,7 @@ import sys, json, os
 audio = "${audio}"
 out_json = "${out_json}"
 model_size = os.getenv("FAST_WHISPER_MODEL","small")
-try:
-    from faster_whisper import WhisperModel
-except Exception as e:
-    print("⚠️  faster-whisper non installato:", e)
-    sys.exit(2)
-
+from faster_whisper import WhisperModel
 model = WhisperModel(model_size, device="cpu", compute_type="int8")
 segments, _ = model.transcribe(audio, word_timestamps=True, vad_filter=True,
                                vad_parameters=dict(min_silence_duration_ms=200))
@@ -198,3 +188,4 @@ ffmpeg -y -f concat -safe 0 -i "$LIST" -c:v libx264 -pix_fmt yuv420p -r $FPS \
   -c:a aac -b:a 192k "$OUT/final.mp4"
 
 echo "✅ Video pronto: $OUT/final.mp4"
+
