@@ -2,17 +2,19 @@
 # Usage: ./render.sh <INPUT_DIR>
 set -euo pipefail
 
-# Cartella input (da argomento o default)
-IN="${1:-$GITHUB_WORKSPACE/assets}"
+# Cartella input (Drive) da argomento o default a $GITHUB_WORKSPACE/assets
+WS="${GITHUB_WORKSPACE:-$PWD}"
+IN="${1:-$WS/assets}"
 
-# Usiamo la stessa cartella per l'output
+# Usiamo la stessa cartella per l'output principale (salva su Drive)
 OUT="$IN"
+mkdir -p "$OUT"
 
 LOG="$OUT/render.log"
 exec > >(tee -a "$LOG") 2>&1
 
 echo "== Start render =="
-echo "Input/Output: $IN"
+echo "Input/Output (Drive): $IN"
 
 # ------- Helpers -------
 find_one() {
@@ -94,7 +96,7 @@ PY
 gen_words_from_audio() {
   local audio="$1" out_json="$2"
   python3 - <<PY
-import sys, json, os
+import json, os
 audio = "${audio}"
 out_json = "${out_json}"
 model_size = os.getenv("FAST_WHISPER_MODEL","small")
@@ -113,7 +115,8 @@ for seg in segments:
         en = float(w.end   if w.end   is not None else st+0.01)
         words.append({"text": w.word.strip(), "start": max(0.0, st), "end": max(en, st+0.01)})
 os.makedirs(os.path.dirname(out_json), exist_ok=True)
-with open(out_json,"w",encoding="utf-8") as f: json.dump(words,f,ensure_ascii=False)
+with open(out_json,"w",encoding="utf-8") as f:
+    import json as J; J.dump(words,f,ensure_ascii=False)
 PY
 }
 
@@ -184,8 +187,13 @@ for f in "${SCENES_BUILT[@]}"; do
   echo "file '$f'" >> "$LIST"
 done
 
+# Final in stessa cartella degli input (Drive)
 ffmpeg -y -f concat -safe 0 -i "$LIST" -c:v libx264 -pix_fmt yuv420p -r $FPS \
   -c:a aac -b:a 192k "$OUT/final.mp4"
 
-echo "✅ Video pronto: $OUT/final.mp4"
+echo "✅ Video pronto (Drive): $OUT/final.mp4"
 
+# --- Compatibilità pipeline GitHub Actions (add_music.sh cerca out/final.mp4) ---
+mkdir -p "$WS/out"
+cp -f "$OUT/final.mp4" "$WS/out/final.mp4"
+echo "📤 Copia per pipeline: $WS/out/final.mp4"
