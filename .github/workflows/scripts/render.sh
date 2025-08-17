@@ -187,11 +187,27 @@ for f in "${SCENES_BUILT[@]}"; do
   echo "file '$f'" >> "$LIST"
 done
 
-# Final video
+# Final video (senza musica di sottofondo)
 ffmpeg -y -f concat -safe 0 -i "$LIST" -c:v libx264 -pix_fmt yuv420p -r $FPS \
   -c:a aac -b:a 192k "$OUT/final.mp4"
 
 echo "✅ Video pronto: $OUT/final.mp4"
+
+# --- (NUOVO) Mix musica PRIMA dell'invio a n8n ---
+MUSIC_VOL="${MUSIC_VOL:-0.12}"   # volume musica di sottofondo
+MUSIC="$(find_one "music" || true)"
+
+if [[ -n "${MUSIC:-}" && -f "$MUSIC" ]]; then
+  echo "🎵 Music found: $MUSIC (mixing before upload)"
+  # Loop musica se più corta, mix con audio parlato; video stream copiato (no re-encode)
+  ffmpeg -y -i "$OUT/final.mp4" -stream_loop -1 -i "$MUSIC" \
+    -filter_complex "[1:a]volume=${MUSIC_VOL}[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]" \
+    -map 0:v -map "[a]" -c:v copy -c:a aac -b:a 192k -shortest "$OUT/__final_with_music.mp4"
+  mv -f "$OUT/__final_with_music.mp4" "$OUT/final.mp4"
+  echo "✅ Music mixed into: $OUT/final.mp4"
+else
+  echo "ℹ️  Nessun file musica trovato (assets/music.*). Salto il mix."
+fi
 
 # --- Invio diretto al webhook n8n ---
 WEBHOOK_URL="${N8N_WEBHOOK_URL:-https://digitale.app.n8n.cloud/webhook/ba7c7a08-7ba7-43cf-b4cb-7dc6b8a22ed2}"
