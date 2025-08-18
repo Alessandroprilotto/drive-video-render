@@ -46,7 +46,7 @@ jobs:
             echo "type = drive"
             echo "scope = drive"
             echo "service_account_file = $GITHUB_WORKSPACE/sa.json"
-            echo "root_folder_id = $GDRIVE_FOLDER_ID"
+            echo "root_folder_id = $GITHUB_FOLDER_ID"
           } > "$RCL"
           echo "RCLONE_CONFIG=$RCL" >> "$GITHUB_ENV"
 
@@ -77,7 +77,13 @@ jobs:
           echo "== assets/fonts =="
           ls -la assets/fonts || true
 
-      - name: Render video (FFmpeg, senza musica)
+      # ⬇️ render.sh ora concatena, mixa la musica e invia a n8n
+      - name: Render video (mix musica & invio a n8n)
+        env:
+          # Passa il webhook a render.sh (altrimenti userà il fallback hardcoded)
+          N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
+          # Volume musica (0.35-0.5 più udibile)
+          MUSIC_VOL: "0.40"
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/out"
@@ -93,44 +99,13 @@ jobs:
           fi
           echo "✔ Eseguo: $R"
           chmod +x "$R"
-          "$R" "$GITHUB_WORKSPACE/assets" "$GITHUB_WORKSPACE/out"
+          "$R" "$GITHUB_WORKSPACE/assets"
 
-      - name: Upload video senza musica
+      # Artifact utile x download dalla run: adesso è già CON musica
+      - name: Upload video finale (artifact)
         uses: actions/upload-artifact@v4
         with:
-          name: video-senza-musica
+          name: video-finale
           path: ${{ github.workspace }}/out/final.mp4
-          retention-days: 7
-          compression-level: 6
-
-      - name: Aggiungi musica al video finale
-        run: |
-          set -euo pipefail
-          MUSIC_FILE="$GITHUB_WORKSPACE/assets/music.mp3"
-          if [ ! -f "$MUSIC_FILE" ]; then
-            echo "❌ File musica non trovato in: $MUSIC_FILE"
-            exit 1
-          fi
-
-          if [ -f .github/workflows/scripts/add_music.sh ]; then
-            M=.github/workflows/scripts/add_music.sh
-          elif [ -f scripts/add_music.sh ]; then
-            M=scripts/add_music.sh
-          elif [ -f ./add_music.sh ]; then
-            M=./add_music.sh
-          else
-            echo "❌ add_music.sh non trovato."
-            exit 1
-          fi
-
-          echo "✔ Eseguo: $M"
-          chmod +x "$M"
-          "$M" "$GITHUB_WORKSPACE/out/final.mp4" "$MUSIC_FILE" "$GITHUB_WORKSPACE/out/final_with_music.mp4"
-
-      - name: Upload video con musica
-        uses: actions/upload-artifact@v4
-        with:
-          name: video-con-musica
-          path: ${{ github.workspace }}/out/final_with_music.mp4
           retention-days: 7
           compression-level: 6
