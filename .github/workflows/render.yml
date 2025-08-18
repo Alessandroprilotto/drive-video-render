@@ -46,7 +46,10 @@ jobs:
             echo "type = drive"
             echo "scope = drive"
             echo "service_account_file = $GITHUB_WORKSPACE/sa.json"
-            echo "root_folder_id = $GITHUB_FOLDER_ID"
+            # usa il folder id solo se presente
+            if [ -n "${GDRIVE_FOLDER_ID:-}" ]; then
+              echo "root_folder_id = $GDRIVE_FOLDER_ID"
+            fi
           } > "$RCL"
           echo "RCLONE_CONFIG=$RCL" >> "$GITHUB_ENV"
 
@@ -77,12 +80,12 @@ jobs:
           echo "== assets/fonts =="
           ls -la assets/fonts || true
 
-      # ⬇️ render.sh ora concatena, mixa la musica e invia a n8n
+      # render.sh concatena, MIXA la musica e invia a n8n (unico invio)
       - name: Render video (mix musica & invio a n8n)
         env:
-          # Passa il webhook a render.sh (altrimenti userà il fallback hardcoded)
+          # imposta il webhook in Secrets come N8N_WEBHOOK_URL
           N8N_WEBHOOK_URL: ${{ secrets.N8N_WEBHOOK_URL }}
-          # Volume musica (0.35-0.5 più udibile)
+          # volume musica (0.35–0.50 più evidente)
           MUSIC_VOL: "0.40"
         run: |
           set -euo pipefail
@@ -101,7 +104,7 @@ jobs:
           chmod +x "$R"
           "$R" "$GITHUB_WORKSPACE/assets"
 
-      # Artifact utile x download dalla run: adesso è già CON musica
+      # Artifact scaricabile dalla run: è già il file FINALE (con musica)
       - name: Upload video finale (artifact)
         uses: actions/upload-artifact@v4
         with:
