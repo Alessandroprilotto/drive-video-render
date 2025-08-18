@@ -192,7 +192,7 @@ ffmpeg -y -f concat -safe 0 -i "$LIST" -c:v libx264 -pix_fmt yuv420p -r $FPS \
 echo "✅ Video pronto (senza musica): $OUT/final.mp4"
 
 # --- Mix musica (prima dell'invio) ---
-MUSIC_VOL="${MUSIC_VOL:-0.35}"   # alza se vuoi più udibile
+MUSIC_VOL="${MUSIC_VOL:-0.00}"   # alza se vuoi più udibile
 MUSIC="$(find_one "music" || true)"
 
 if [[ -n "${MUSIC:-}" && -f "$MUSIC" ]]; then
