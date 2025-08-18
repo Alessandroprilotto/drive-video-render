@@ -2,11 +2,9 @@
 # Usage: ./render.sh <INPUT_DIR>
 set -euo pipefail
 
-# Cartella input da argomento o default a $GITHUB_WORKSPACE/assets
+# --- Paths ---
 WS="${GITHUB_WORKSPACE:-$PWD}"
 IN="${1:-$WS/assets}"
-
-# Output nella stessa cartella degli input
 OUT="$IN"
 mkdir -p "$OUT"
 
@@ -96,7 +94,7 @@ PY
 gen_words_from_audio() {
   local audio="$1" out_json="$2"
   python3 - <<PY
-import json, os
+import os
 audio = "${audio}"
 out_json = "${out_json}"
 model_size = os.getenv("FAST_WHISPER_MODEL","small")
@@ -114,9 +112,10 @@ for seg in segments:
         st = float(w.start if w.start is not None else seg.start)
         en = float(w.end   if w.end   is not None else st+0.01)
         words.append({"text": w.word.strip(), "start": max(0.0, st), "end": max(en, st+0.01)})
+import json as J, os
 os.makedirs(os.path.dirname(out_json), exist_ok=True)
 with open(out_json,"w",encoding="utf-8") as f:
-    import json as J; J.dump(words,f,ensure_ascii=False)
+    J.dump(words,f,ensure_ascii=False)
 PY
 }
 
@@ -187,39 +186,42 @@ for f in "${SCENES_BUILT[@]}"; do
   echo "file '$f'" >> "$LIST"
 done
 
-# Final video (prima senza musica)
+# --- Concat finale (senza musica) ---
 ffmpeg -y -f concat -safe 0 -i "$LIST" -c:v libx264 -pix_fmt yuv420p -r $FPS \
   -c:a aac -b:a 192k "$OUT/final.mp4"
+echo "✅ Video pronto (senza musica): $OUT/final.mp4"
 
-echo "✅ Video pronto: $OUT/final.mp4"
-
-# --- Mix musica ---
-MUSIC_VOL="${MUSIC_VOL:-0.12}"
+# --- Mix musica (prima dell'invio) ---
+MUSIC_VOL="${MUSIC_VOL:-0.35}"   # alza se vuoi più udibile
 MUSIC="$(find_one "music" || true)"
 
 if [[ -n "${MUSIC:-}" && -f "$MUSIC" ]]; then
-  echo "🎵 Music found: $MUSIC (mixing)"
+  echo "🎵 Music found: $MUSIC (mixing, vol=${MUSIC_VOL})"
+  # Forza stereo su entrambe le tracce per evitare attenuazioni
   ffmpeg -y -i "$OUT/final.mp4" -stream_loop -1 -i "$MUSIC" \
-    -filter_complex "[1:a]volume=${MUSIC_VOL}[bg];[0:a][bg]amix=inputs=2:duration=first:dropout_transition=0[a]" \
+    -filter_complex "\
+      [0:a]aformat=sample_rates=48000:channel_layouts=stereo[vo];\
+      [1:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=${MUSIC_VOL}[bg];\
+      [vo][bg]amix=inputs=2:duration=first:normalize=0[a]" \
     -map 0:v -map "[a]" -c:v copy -c:a aac -b:a 192k -shortest "$OUT/__final_with_music.mp4"
   mv -f "$OUT/__final_with_music.mp4" "$OUT/final.mp4"
   echo "✅ Music mixed into: $OUT/final.mp4"
 else
-  echo "ℹ️  Nessun file musica trovato (assets/music.*). Salto il mix."
+  echo "ℹ️  Nessun file musica trovato (assets/music.*). Invio senza musica."
 fi
 
-# --- Invio diretto al webhook n8n (SOLO dopo mix) ---
+# --- Invio a n8n (UNICO invio) ---
 WEBHOOK_URL="${N8N_WEBHOOK_URL:-https://digitale.app.n8n.cloud/webhook/ba7c7a08-7ba7-43cf-b4cb-7dc6b8a22ed2}"
-echo "📤 Invio video a n8n..."
+echo "📤 Invio video finale (con musica se presente) a n8n..."
 if ! curl -sS --retry 3 --fail -X POST \
-  -F "file=@$OUT/final.mp4;type=video/mp4;filename=final.mp4" \
+  -F "file_0=@$OUT/final.mp4;type=video/mp4;filename=final.mp4" \
   "$WEBHOOK_URL?source=github&repo=${GITHUB_REPOSITORY:-local}&run_id=${GITHUB_RUN_ID:-0}"; then
   echo "⚠️  Invio a n8n fallito (proseguirò comunque)."
 else
   echo "✅ Video inviato al webhook"
 fi
 
-# --- Copia compatibilità ---
+# --- Copia compatibilità per altri step (artifact, ecc.) ---
 mkdir -p "$WS/out"
 cp -f "$OUT/final.mp4" "$WS/out/final.mp4"
 echo "📦 Copia compatibilità: $WS/out/final.mp4"
