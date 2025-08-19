@@ -121,9 +121,34 @@ PY
 
 effect_for_index() {
   local i="$1" frames="$2"
-  case "$i" in
-    1) echo "[0:v]scale=1400:-2,zoompan=z=min(1.0+0.0012*on\,1.25):x=min((iw-ow)*on/$frames\,(iw-ow)/4):y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
-    *) echo "[0:v]scale=1400:-2,zoompan=z=1.0:x=(iw-ow)/2:y=(ih-oh)/2:d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]";;
+  # Più margine per pan/zoom (input upscalato prima del crop 1080x1920)
+  local SCALE_W=1620
+
+  case $(( (i-1) % 8 )) in
+    0)  # Zoom-in centrale
+        echo "[0:v]scale=${SCALE_W}:-2,zoompan=z='min(zoom+0.0012,1.25)':x='iw/2-(ow/2)/zoom':y='ih/2-(oh/2)/zoom':d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+        ;;
+    1)  # Zoom-out centrale
+        echo "[0:v]scale=${SCALE_W}:-2,zoompan=z='max(1.25-0.0012*on,1.0)':x='iw/2-(ow/2)/zoom':y='ih/2-(oh/2)/zoom':d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+        ;;
+    2)  # Pan L→R con leggero zoom
+        echo "[0:v]scale=${SCALE_W}:-2,zoompan=z=1.10:x='(iw-ow/zoom)*on/${frames}':y='(ih-oh/zoom)/2':d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+        ;;
+    3)  # Pan R→L con leggero zoom
+        echo "[0:v]scale=${SCALE_W}:-2,zoompan=z=1.10:x='(iw-ow/zoom)*(1-on/${frames})':y='(ih-oh/zoom)/2':d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+        ;;
+    4)  # Pan Top→Bottom con lieve zoom
+        echo "[0:v]scale=${SCALE_W}:-2,zoompan=z=1.05:x='(iw-ow/zoom)/2':y='(ih-oh/zoom)*on/${frames}':d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+        ;;
+    5)  # Pan Bottom→Top con lieve zoom
+        echo "[0:v]scale=${SCALE_W}:-2,zoompan=z=1.05:x='(iw-ow/zoom)/2':y='(ih-oh/zoom)*(1-on/${frames})':d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+        ;;
+    6)  # Diagonale TL→BR
+        echo "[0:v]scale=${SCALE_W}:-2,zoompan=z=1.08:x='(iw-ow/zoom)*on/${frames}':y='(ih-oh/zoom)*on/${frames}':d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+        ;;
+    *)  # Diagonale BR→TL
+        echo "[0:v]scale=${SCALE_W}:-2,zoompan=z=1.08:x='(iw-ow/zoom)*(1-on/${frames})':y='(ih-oh/zoom)*(1-on/${frames})':d=${frames}:s=${WIDTH}x${HEIGHT},fps=${FPS}[v]"
+        ;;
   esac
 }
 
@@ -131,6 +156,16 @@ SCENES_BUILT=()
 fontsdir_opt=""
 if [[ -d "$FONTS_DIR" ]]; then
   fontsdir_opt=":fontsdir='${FONTS_DIR}'"
+fi
+
+# --- AUTO: genera animazioni 2.5D e maschere persona/cielo, se gli script sono presenti ---
+if [[ -f "$WS/.github/workflows/scripts/auto_animate.py" ]]; then
+  echo "[auto] Genero animazioni parallax…"
+  python3 "$WS/.github/workflows/scripts/auto_animate.py" "$IN" "$OUT" "$FPS" "$WIDTH" "$HEIGHT" || true
+fi
+if [[ -f "$WS/.github/workflows/scripts/auto_masks.py" ]]; then
+  echo "[auto] Genero maschere semantic (person/sky)…"
+  python3 "$WS/.github/workflows/scripts/auto_masks.py" "$IN" "$OUT" "$WIDTH" "$HEIGHT" || true
 fi
 
 for i in 1 2 3 4 5 6; do
@@ -165,16 +200,68 @@ PY
     make_ass_word_by_word "$CAP_JSON" "$CAP_ASS" && HAVE_CAP=1
   fi
 
-  if [[ $HAVE_CAP -eq 1 ]]; then
-    ffmpeg -y -loop 1 -i "$IMG" -i "$AUD" -t "$VDIR" \
-      -filter_complex "$FX;[v]subtitles='${CAP_ASS}'${fontsdir_opt}[vf]" \
-      -map "[vf]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS \
-      -c:a aac -b:a 192k -shortest "$OUTFILE"
+  # --- preferisci animazione/parallax se esiste; altrimenti maschere; altrimenti foto+zoompan ---
+  ANIM="$(find_one "foto_${i}_anim" || true)"
+  MASKP="$(find_one "mask_person_${i}" || true)"
+  MASKS="$(find_one "mask_sky_${i}" || true)"
+  USE_ANIM=0
+  [[ -n "${ANIM:-}" && -f "$ANIM" ]] && USE_ANIM=1 && echo "🎬 Uso animazione auto per foto_${i}: $ANIM"
+
+  if [[ $USE_ANIM -eq 1 ]]; then
+    if [[ $HAVE_CAP -eq 1 ]]; then
+      ffmpeg -y -stream_loop -1 -i "$ANIM" -i "$AUD" -t "$VDIR" \
+        -filter_complex "[0:v]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2,fps=${FPS}[va];[va]subtitles='${CAP_ASS}'${fontsdir_opt}[vf]" \
+        -map "[vf]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS -c:a aac -b:a 192k -shortest "$OUTFILE"
+    else
+      ffmpeg -y -stream_loop -1 -i "$ANIM" -i "$AUD" -t "$VDIR" \
+        -filter_complex "[0:v]scale=${WIDTH}:${HEIGHT}:force_original_aspect_ratio=decrease,pad=${WIDTH}:${HEIGHT}:(ow-iw)/2:(oh-ih)/2,fps=${FPS}[v]" \
+        -map "[v]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS -c:a aac -b:a 192k -shortest "$OUTFILE"
+    fi
+
+  elif [[ -n "${MASKP:-}" || -n "${MASKS:-}" ]]; then
+    if [[ -n "${MASKP:-}" && -n "${MASKS:-}" ]]; then
+      if [[ $HAVE_CAP -eq 1 ]]; then
+        ffmpeg -y -loop 1 -i "$IMG" -i "$AUD" -t "$VDIR" -i "$MASKP" -i "$MASKS" \
+          -filter_complex "$FX;[v]format=rgba[base];[2:v]scale=${WIDTH}:${HEIGHT},format=gray,boxblur=3[mp];[3:v]scale=${WIDTH}:${HEIGHT},format=gray,boxblur=3[ms];[base]split=3[b0][bp][bs];[bp][mp]alphamerge[pA];[bs][ms]alphamerge[sA];[b0][pA]overlay=x='8*sin(n/60)':y='6*cos(n/75)'[b1];[b1][sA]overlay=x='3*sin(n/120)':y='2*cos(n/140)'[v2];[v2]subtitles='${CAP_ASS}'${fontsdir_opt}[vf]" \
+          -map "[vf]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS -c:a aac -b:a 192k -shortest "$OUTFILE"
+      else
+        ffmpeg -y -loop 1 -i "$IMG" -i "$AUD" -t "$VDIR" -i "$MASKP" -i "$MASKS" \
+          -filter_complex "$FX;[v]format=rgba[base];[2:v]scale=${WIDTH}:${HEIGHT},format=gray,boxblur=3[mp];[3:v]scale=${WIDTH}:${HEIGHT},format=gray,boxblur=3[ms];[base]split=3[b0][bp][bs];[bp][mp]alphamerge[pA];[bs][ms]alphamerge[sA];[b0][pA]overlay=x='8*sin(n/60)':y='6*cos(n/75)'[b1];[b1][sA]overlay=x='3*sin(n/120)':y='2*cos(n/140)'[v]" \
+          -map "[v]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS -c:a aac -b:a 192k -shortest "$OUTFILE"
+      fi
+    elif [[ -n "${MASKP:-}" ]]; then
+      if [[ $HAVE_CAP -eq 1 ]]; then
+        ffmpeg -y -loop 1 -i "$IMG" -i "$AUD" -t "$VDIR" -i "$MASKP" \
+          -filter_complex "$FX;[v]format=rgba[base];[2:v]scale=${WIDTH}:${HEIGHT},format=gray,boxblur=3[mp];[base][mp]alphamerge[pA];[base][pA]overlay=x='8*sin(n/60)':y='6*cos(n/75)'[v2];[v2]subtitles='${CAP_ASS}'${fontsdir_opt}[vf]" \
+          -map "[vf]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS -c:a aac -b:a 192k -shortest "$OUTFILE"
+      else
+        ffmpeg -y -loop 1 -i "$IMG" -i "$AUD" -t "$VDIR" -i "$MASKP" \
+          -filter_complex "$FX;[v]format=rgba[base];[2:v]scale=${WIDTH}:${HEIGHT},format=gray,boxblur=3[mp];[base][mp]alphamerge[pA];[base][pA]overlay=x='8*sin(n/60)':y='6*cos(n/75)'[v]" \
+          -map "[v]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS -c:a aac -b:a 192k -shortest "$OUTFILE"
+      fi
+    else # solo sky
+      if [[ $HAVE_CAP -eq 1 ]]; then
+        ffmpeg -y -loop 1 -i "$IMG" -i "$AUD" -t "$VDIR" -i "$MASKS" \
+          -filter_complex "$FX;[v]format=rgba[base];[2:v]scale=${WIDTH}:${HEIGHT},format=gray,boxblur=3[ms];[base][ms]alphamerge[sA];[base][sA]overlay=x='3*sin(n/120)':y='2*cos(n/140)'[v2];[v2]subtitles='${CAP_ASS}'${fontsdir_opt}[vf]" \
+          -map "[vf]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS -c:a aac -b:a 192k -shortest "$OUTFILE"
+      else
+        ffmpeg -y -loop 1 -i "$IMG" -i "$AUD" -t "$VDIR" -i "$MASKS" \
+          -filter_complex "$FX;[v]format=rgba[base];[2:v]scale=${WIDTH}:${HEIGHT},format=gray,boxblur=3[ms];[base][ms]alphamerge[sA];[base][sA]overlay=x='3*sin(n/120)':y='2*cos(n/140)'[v]" \
+          -map "[v]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS -c:a aac -b:a 192k -shortest "$OUTFILE"
+      fi
+    fi
+
   else
-    ffmpeg -y -loop 1 -i "$IMG" -i "$AUD" -t "$VDIR" \
-      -filter_complex "$FX" \
-      -map "[v]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS \
-      -c:a aac -b:a 192k -shortest "$OUTFILE"
+    # --- fallback: comportamento originale (foto+zoompan, con/senza sottotitoli) ---
+    if [[ $HAVE_CAP -eq 1 ]]; then
+      ffmpeg -y -loop 1 -i "$IMG" -i "$AUD" -t "$VDIR" \
+        -filter_complex "$FX;[v]subtitles='${CAP_ASS}'${fontsdir_opt}[vf]" \
+        -map "[vf]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS -c:a aac -b:a 192k -shortest "$OUTFILE"
+    else
+      ffmpeg -y -loop 1 -i "$IMG" -i "$AUD" -t "$VDIR" \
+        -filter_complex "$FX" \
+        -map "[v]" -map 1:a -c:v libx264 -preset veryfast -pix_fmt yuv420p -r $FPS -c:a aac -b:a 192k -shortest "$OUTFILE"
+    fi
   fi
 
   SCENES_BUILT+=("$OUTFILE")
@@ -187,17 +274,15 @@ for f in "${SCENES_BUILT[@]}"; do
 done
 
 # --- Concat finale (senza musica) ---
-ffmpeg -y -f concat -safe 0 -i "$LIST" -c:v libx264 -pix_fmt yuv420p -r $FPS \
-  -c:a aac -b:a 192k "$OUT/final.mp4"
+ffmpeg -y -f concat -safe 0 -i "$LIST" -c:v libx264 -pix_fmt yuv420p -r $FPS -c:a aac -b:a 192k "$OUT/final.mp4"
 echo "✅ Video pronto (senza musica): $OUT/final.mp4"
 
 # --- Mix musica (prima dell'invio) ---
-MUSIC_VOL="${MUSIC_VOL:-0.00}"   # alza se vuoi più udibile
+MUSIC_VOL="${MUSIC_VOL:-0.40}"   # alza/abbassa via env; 0.35–0.50 consigliato
 MUSIC="$(find_one "music" || true)"
 
 if [[ -n "${MUSIC:-}" && -f "$MUSIC" ]]; then
   echo "🎵 Music found: $MUSIC (mixing, vol=${MUSIC_VOL})"
-  # Forza stereo su entrambe le tracce per evitare attenuazioni
   ffmpeg -y -i "$OUT/final.mp4" -stream_loop -1 -i "$MUSIC" \
     -filter_complex "\
       [0:a]aformat=sample_rates=48000:channel_layouts=stereo[vo];\
